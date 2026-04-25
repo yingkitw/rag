@@ -1,4 +1,4 @@
-# RAG Core
+# RAG
 
 A Rust library and CLI tool for Retrieval-Augmented Generation (RAG) with support for multiple embedding models and vector stores.
 
@@ -27,7 +27,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rag-core = { git = "https://github.com/yingkitw/rag" }
+rag = { git = "https://github.com/yingkitw/rag" }
 ```
 
 ## Quick Start
@@ -54,7 +54,7 @@ rag count
 ### Library Usage
 
 ```rust
-use rag_core::{
+use rag::{
     chunker::FixedSizeChunker,
     embeddings::OpenAIEmbeddingModel,
     retriever::Retriever,

@@ -2,7 +2,7 @@
 
 ## Overview
 
-RAG Core is a Rust library for Retrieval-Augmented Generation (RAG) with support for multiple embedding models, vector stores, and interfaces (CLI, MCP, Library).
+RAG is a Rust library and CLI for Retrieval-Augmented Generation (RAG) with support for multiple embedding models, vector stores, and interfaces (CLI, MCP, Library).
 
 ## Core Components
 

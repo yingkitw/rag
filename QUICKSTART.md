@@ -54,7 +54,7 @@ rag count
 ### Basic Example
 
 ```rust
-use rag_core::{
+use rag::{
     chunker::FixedSizeChunker,
     embeddings::OpenAIEmbeddingModel,
     retriever::Retriever,
@@ -104,7 +104,7 @@ let results = retriever.retrieve_filtered("query", "John Doe").await?;
 ### Different Chunking Strategies
 
 ```rust
-use rag_core::chunker::{FixedSizeChunker, ParagraphChunker, SentenceChunker};
+use rag::chunker::{FixedSizeChunker, ParagraphChunker, SentenceChunker};
 
 // Fixed-size with overlap
 let chunker = Box::new(FixedSizeChunker::new(500, 50));
@@ -123,7 +123,7 @@ let retriever = Retriever::new(embedding_model, vector_store)
 ### Using Ollama
 
 ```rust
-use rag_core::embeddings::OllamaEmbeddingModel;
+use rag::embeddings::OllamaEmbeddingModel;
 
 let model = OllamaEmbeddingModel::new("nomic-embed-text".to_string())
     .with_base_url("http://localhost:11434".to_string());
@@ -238,7 +238,7 @@ for query in queries {
 
 ### Custom Error Handling
 ```rust
-use rag_core::errors::RagError;
+use rag::errors::RagError;
 
 match retriever.add_document(content).await {
     Ok(_) => println!("Document added"),
