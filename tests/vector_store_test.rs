@@ -400,6 +400,49 @@ async fn test_vector_store_large_scale() {
     assert!(results[0].score > 0.9);
 }
 
+#[tokio::test]
+async fn test_vector_store_batch_search() {
+    let store = InMemoryVectorStore::new();
+
+    let doc1 = Document::new("Rust programming".to_string())
+        .with_embedding(vec![1.0, 0.0, 0.0]);
+    let doc2 = Document::new("Python programming".to_string())
+        .with_embedding(vec![0.0, 1.0, 0.0]);
+    let doc3 = Document::new("JavaScript".to_string())
+        .with_embedding(vec![0.0, 0.0, 1.0]);
+
+    store.add(doc1.clone()).await.unwrap();
+    store.add(doc2.clone()).await.unwrap();
+    store.add(doc3.clone()).await.unwrap();
+
+    let queries = vec![
+        vec![1.0, 0.0, 0.0],
+        vec![0.0, 1.0, 0.0],
+    ];
+
+    let results = store.search_batch(&queries, 2).await.unwrap();
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].len(), 2);
+    assert_eq!(results[1].len(), 2);
+}
+
+#[tokio::test]
+async fn test_vector_store_euclidean_metric() {
+    let store = InMemoryVectorStore::with_metric(rag::DistanceMetric::Euclidean);
+
+    let doc1 = Document::new("doc1".to_string())
+        .with_embedding(vec![1.0, 0.0, 0.0]);
+    let doc2 = Document::new("doc2".to_string())
+        .with_embedding(vec![0.0, 1.0, 0.0]);
+
+    store.add(doc1.clone()).await.unwrap();
+    store.add(doc2.clone()).await.unwrap();
+
+    let results = store.search(&[1.0, 0.0, 0.0], 1).await.unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].document.id, doc1.id);
+}
+
 struct CleanupGuard(String);
 
 impl CleanupGuard {

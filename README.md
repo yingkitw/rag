@@ -6,7 +6,8 @@ A Rust library and CLI tool for Retrieval-Augmented Generation (RAG) with suppor
 
 - 🦀 Pure Rust implementation with async/await support
 - 🤖 Multiple embedding model support (OpenAI, Ollama)
-- 📊 In-memory vector stores with cosine similarity search (DashMap and minimal implementations)
+- 📊 Pluggable vector search indexes with multiple distance metrics (Cosine, Euclidean, Dot Product, Manhattan)
+- 📊 In-memory vector stores with parallel batch search (`InMemoryVectorStore`, `MinimalVectorDB`)
 - 📝 Multiple text chunking strategies (fixed-size, paragraph, sentence)
 - 🎯 Configurable top-k retrieval
 - 🔍 Metadata filtering support

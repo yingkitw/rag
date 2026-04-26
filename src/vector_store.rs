@@ -1,4 +1,5 @@
 use crate::errors::Result;
+use crate::index::{DistanceMetric, FlatIndex, Index};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -92,31 +93,24 @@ pub trait VectorStore: Send + Sync {
         top_k: usize,
         filter: &MetadataFilter,
     ) -> Result<Vec<Similarity>>;
+    async fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Result<Vec<Vec<Similarity>>>;
     async fn get(&self, id: &str) -> Result<Option<Document>>;
     async fn delete(&self, id: &str) -> Result<bool>;
     async fn delete_batch(&self, ids: Vec<String>) -> Result<usize>;
     async fn clear(&self) -> Result<()>;
     async fn list(&self, limit: usize, offset: usize) -> Result<Vec<Document>>;
     async fn count(&self) -> Result<usize>;
+    fn metric(&self) -> DistanceMetric;
 }
 
+/// Compute cosine similarity between two vectors.
+/// Deprecated: use [`DistanceMetric::Cosine`] instead.
 pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    if a.len() != b.len() {
-        return 0.0;
-    }
-
-    let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-
-    if norm_a == 0.0 || norm_b == 0.0 {
-        return 0.0;
-    }
-
-    dot_product / (norm_a * norm_b)
+    DistanceMetric::Cosine.similarity(a, b)
 }
 
 pub struct InMemoryVectorStore {
+    index: FlatIndex,
     documents: dashmap::DashMap<String, Document>,
 }
 
@@ -129,13 +123,22 @@ impl Default for InMemoryVectorStore {
 impl InMemoryVectorStore {
     pub fn new() -> Self {
         Self {
+            index: FlatIndex::new(),
             documents: dashmap::DashMap::new(),
         }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
+            index: FlatIndex::with_capacity(capacity),
             documents: dashmap::DashMap::with_capacity(capacity),
+        }
+    }
+
+    pub fn with_metric(metric: DistanceMetric) -> Self {
+        Self {
+            index: FlatIndex::with_metric(metric),
+            documents: dashmap::DashMap::new(),
         }
     }
 
@@ -155,6 +158,7 @@ impl InMemoryVectorStore {
 
         let store = Self::new();
         for doc in docs_vec {
+            store.index.add(doc.clone());
             store.documents.insert(doc.id.clone(), doc);
         }
 
@@ -164,13 +168,17 @@ impl InMemoryVectorStore {
 
 impl VectorStore for InMemoryVectorStore {
     async fn add(&self, document: Document) -> Result<()> {
-        self.documents.insert(document.id.clone(), document);
+        let id = document.id.clone();
+        self.index.add(document.clone());
+        self.documents.insert(id, document);
         Ok(())
     }
 
     async fn add_batch(&self, documents: Vec<Document>) -> Result<()> {
         for doc in documents {
-            self.documents.insert(doc.id.clone(), doc);
+            let id = doc.id.clone();
+            self.index.add(doc.clone());
+            self.documents.insert(id, doc);
         }
         Ok(())
     }
@@ -185,30 +193,17 @@ impl VectorStore for InMemoryVectorStore {
         top_k: usize,
         filter: &MetadataFilter,
     ) -> Result<Vec<Similarity>> {
-        let mut similarities: Vec<Similarity> = self
-            .documents
-            .iter()
-            .filter_map(|entry| {
-                let doc = entry.value();
-                if let Some(embedding) = &doc.embedding {
-                    if !filter.matches(&doc.metadata) {
-                        return None;
-                    }
-                    let score = cosine_similarity(query, embedding);
-                    Some(Similarity {
-                        document: doc.clone(),
-                        score,
-                    })
-                } else {
-                    None
-                }
-            })
+        let results = self.index.search(query, top_k * 4);
+        let filtered: Vec<Similarity> = results
+            .into_iter()
+            .filter(|s| filter.matches(&s.document.metadata))
+            .take(top_k)
             .collect();
+        Ok(filtered)
+    }
 
-        similarities.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
-        similarities.truncate(top_k);
-
-        Ok(similarities)
+    async fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Result<Vec<Vec<Similarity>>> {
+        Ok(self.index.search_batch(queries, top_k))
     }
 
     async fn get(&self, id: &str) -> Result<Option<Document>> {
@@ -216,13 +211,18 @@ impl VectorStore for InMemoryVectorStore {
     }
 
     async fn delete(&self, id: &str) -> Result<bool> {
-        Ok(self.documents.remove(id).is_some())
+        let removed = self.documents.remove(id).is_some();
+        if removed {
+            self.index.remove(id);
+        }
+        Ok(removed)
     }
 
     async fn delete_batch(&self, ids: Vec<String>) -> Result<usize> {
         let mut count = 0;
         for id in ids {
             if self.documents.remove(&id).is_some() {
+                self.index.remove(&id);
                 count += 1;
             }
         }
@@ -231,6 +231,7 @@ impl VectorStore for InMemoryVectorStore {
 
     async fn clear(&self) -> Result<()> {
         self.documents.clear();
+        self.index.clear();
         Ok(())
     }
 
@@ -247,9 +248,14 @@ impl VectorStore for InMemoryVectorStore {
     async fn count(&self) -> Result<usize> {
         Ok(self.documents.len())
     }
+
+    fn metric(&self) -> DistanceMetric {
+        self.index.metric()
+    }
 }
 
 pub struct MinimalVectorDB {
+    index: FlatIndex,
     documents: Arc<RwLock<HashMap<String, Document>>>,
 }
 
@@ -262,13 +268,22 @@ impl Default for MinimalVectorDB {
 impl MinimalVectorDB {
     pub fn new() -> Self {
         Self {
+            index: FlatIndex::new(),
             documents: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
+            index: FlatIndex::with_capacity(capacity),
             documents: Arc::new(RwLock::new(HashMap::with_capacity(capacity))),
+        }
+    }
+
+    pub fn with_metric(metric: DistanceMetric) -> Self {
+        Self {
+            index: FlatIndex::with_metric(metric),
+            documents: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -288,11 +303,14 @@ impl MinimalVectorDB {
         let docs_vec: Vec<Document> = serde_json::from_str(&content)?;
 
         let mut docs = HashMap::new();
+        let index = FlatIndex::new();
         for doc in docs_vec {
+            index.add(doc.clone());
             docs.insert(doc.id.clone(), doc);
         }
 
         Ok(Self {
+            index,
             documents: Arc::new(RwLock::new(docs)),
         })
     }
@@ -300,15 +318,19 @@ impl MinimalVectorDB {
 
 impl VectorStore for MinimalVectorDB {
     async fn add(&self, document: Document) -> Result<()> {
+        let id = document.id.clone();
+        self.index.add(document.clone());
         let mut docs = self.documents.write().unwrap();
-        docs.insert(document.id.clone(), document);
+        docs.insert(id, document);
         Ok(())
     }
 
     async fn add_batch(&self, documents: Vec<Document>) -> Result<()> {
         let mut docs = self.documents.write().unwrap();
         for doc in documents {
-            docs.insert(doc.id.clone(), doc);
+            let id = doc.id.clone();
+            self.index.add(doc.clone());
+            docs.insert(id, doc);
         }
         Ok(())
     }
@@ -323,29 +345,17 @@ impl VectorStore for MinimalVectorDB {
         top_k: usize,
         filter: &MetadataFilter,
     ) -> Result<Vec<Similarity>> {
-        let docs = self.documents.read().unwrap();
-        let mut similarities: Vec<Similarity> = docs
-            .values()
-            .filter_map(|doc| {
-                if let Some(embedding) = &doc.embedding {
-                    if !filter.matches(&doc.metadata) {
-                        return None;
-                    }
-                    let score = cosine_similarity(query, embedding);
-                    Some(Similarity {
-                        document: doc.clone(),
-                        score,
-                    })
-                } else {
-                    None
-                }
-            })
+        let results = self.index.search(query, top_k * 4);
+        let filtered: Vec<Similarity> = results
+            .into_iter()
+            .filter(|s| filter.matches(&s.document.metadata))
+            .take(top_k)
             .collect();
+        Ok(filtered)
+    }
 
-        similarities.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
-        similarities.truncate(top_k);
-
-        Ok(similarities)
+    async fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Result<Vec<Vec<Similarity>>> {
+        Ok(self.index.search_batch(queries, top_k))
     }
 
     async fn get(&self, id: &str) -> Result<Option<Document>> {
@@ -354,15 +364,25 @@ impl VectorStore for MinimalVectorDB {
     }
 
     async fn delete(&self, id: &str) -> Result<bool> {
-        let mut docs = self.documents.write().unwrap();
-        Ok(docs.remove(id).is_some())
+        let removed = {
+            let mut docs = self.documents.write().unwrap();
+            docs.remove(id).is_some()
+        };
+        if removed {
+            self.index.remove(id);
+        }
+        Ok(removed)
     }
 
     async fn delete_batch(&self, ids: Vec<String>) -> Result<usize> {
-        let mut docs = self.documents.write().unwrap();
         let mut count = 0;
         for id in ids {
-            if docs.remove(&id).is_some() {
+            let removed = {
+                let mut docs = self.documents.write().unwrap();
+                docs.remove(&id).is_some()
+            };
+            if removed {
+                self.index.remove(&id);
                 count += 1;
             }
         }
@@ -372,6 +392,7 @@ impl VectorStore for MinimalVectorDB {
     async fn clear(&self) -> Result<()> {
         let mut docs = self.documents.write().unwrap();
         docs.clear();
+        self.index.clear();
         Ok(())
     }
 
@@ -388,5 +409,9 @@ impl VectorStore for MinimalVectorDB {
     async fn count(&self) -> Result<usize> {
         let docs = self.documents.read().unwrap();
         Ok(docs.len())
+    }
+
+    fn metric(&self) -> DistanceMetric {
+        self.index.metric()
     }
 }

@@ -34,20 +34,53 @@ let embeddings = model.embed(vec!["text1", "text2"]).await?;
   - `add(document)`: Add a single document
   - `add_batch(documents)`: Add multiple documents
   - `search(query, top_k)`: Find similar documents
+  - `search_with_filter(query, top_k, filter)`: Find similar documents with metadata filtering
+  - `search_batch(queries, top_k)`: Batch search for multiple queries
   - `get(id)`: Retrieve document by ID
   - `delete(id)`: Remove document
   - `list(limit, offset)`: List documents with pagination
   - `count()`: Get total document count
+  - `metric()`: Get the configured distance metric
 
 **Types**:
 - `Document`: Represents a stored document with content, metadata, and optional embedding
 - `Similarity`: Contains a document and its similarity score
+- `MetadataFilter`: Key-value metadata filtering
 - `cosine_similarity()`: Helper function for computing similarity
 
 **Implementations**:
-- `InMemoryVectorStore`: Thread-safe in-memory store using `DashMap`
+- `InMemoryVectorStore`: Thread-safe in-memory store using `DashMap` and `FlatIndex`
+- `MinimalVectorDB`: Simple in-memory store using `RwLock<HashMap>` and `FlatIndex`
 
-### 3. Chunker Module (`src/chunker.rs`)
+### 3. Index Module (`src/index.rs`)
+
+**Purpose**: Pluggable vector search indexes with multiple distance metrics.
+
+**Traits**:
+- `Index`: Core trait for vector search indexes
+  - `add(document)`: Add document to index
+  - `remove(id)`: Remove document from index
+  - `search(query, top_k)`: Find top-k similar documents
+  - `search_batch(queries, top_k)`: Parallel batch search
+  - `clear()`: Remove all documents
+  - `len()`: Number of indexed documents
+  - `metric()`: Distance metric used
+
+**Distance Metrics** (`DistanceMetric`):
+- `Cosine`: Cosine similarity (default, best for text embeddings)
+- `Euclidean`: Negative Euclidean distance (best for spatial data)
+- `DotProduct`: Raw dot product (best for normalized vectors)
+- `Manhattan`: Negative Manhattan/L1 distance
+
+**Implementations**:
+- `FlatIndex`: Brute-force exact search with parallel batch query support. Suitable for datasets < 100k documents.
+
+**Utilities** (`utils`):
+- `l2_normalize()`: In-place L2 normalization
+- `l2_normalize_copy()`: Return a new normalized vector
+- `validate_dimensions()`: Validate consistent vector dimensions in a batch
+
+### 4. Chunker Module (`src/chunker.rs`)
 
 **Purpose**: Split text into manageable chunks for embedding.
 
@@ -115,9 +148,15 @@ let embeddings = model.embed(vec!["text1", "text2"]).await?;
       │                           │
       ▼                           ▼
 ┌─────────────┐           ┌──────────────┐
-│  OpenAI     │           │ InMemory     │
-│  Ollama     │           │ (extensible) │
+│  OpenAI     │           │   Index      │
+│  Ollama     │           │  (pluggable) │
 └─────────────┘           └──────────────┘
+                                  │
+                                  ▼
+                           ┌──────────────┐
+                           │  FlatIndex   │
+                           │  (HNSW, etc) │
+                           └──────────────┘
 ```
 
 ## Data Flow
@@ -134,9 +173,10 @@ let embeddings = model.embed(vec!["text1", "text2"]).await?;
 
 1. User provides a query
 2. Embedding model generates query vector
-3. Vector store searches for similar documents using cosine similarity
-4. Top-k results are returned with scores
-5. Results can be filtered by metadata
+3. Vector store delegates search to its `Index`
+4. Index computes similarity using the configured `DistanceMetric`
+5. Top-k results are returned with scores
+6. Results can be filtered by metadata
 
 ## Extensibility
 
@@ -150,6 +190,48 @@ impl EmbeddingModel for MyEmbeddingModel {
     async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
         // Implementation
     }
+}
+```
+
+### Adding New Indexes
+
+Implement the `Index` trait for custom search algorithms:
+
+```rust
+impl Index for MyAnnIndex {
+    fn add(&self, document: Document) {
+        // Add to your ANN structure (HNSW, IVF, etc.)
+    }
+
+    fn search(&self, query: &[f32], top_k: usize) -> Vec<Similarity> {
+        // Perform approximate nearest neighbor search
+    }
+
+    fn metric(&self) -> DistanceMetric {
+        DistanceMetric::Cosine
+    }
+}
+```
+
+Then use it in a custom `VectorStore`:
+
+```rust
+struct AnnVectorStore {
+    index: MyAnnIndex,
+    documents: DashMap<String, Document>,
+}
+
+impl VectorStore for AnnVectorStore {
+    async fn add(&self, document: Document) -> Result<()> {
+        self.index.add(document.clone());
+        self.documents.insert(document.id.clone(), document);
+        Ok(())
+    }
+
+    async fn search(&self, query: &[f32], top_k: usize) -> Result<Vec<Similarity>> {
+        Ok(self.index.search(query, top_k))
+    }
+    // ... other methods
 }
 ```
 
@@ -187,10 +269,12 @@ impl TextChunker for MyChunker {
 
 ## Performance Considerations
 
-1. **Batching**: The `embed` method processes multiple texts in a single request when possible
-2. **Concurrent Search**: Vector store operations can be called concurrently
-3. **Memory**: In-memory store uses DashMap for efficient concurrent access
-4. **Network**: Embedding requests are async and non-blocking
+1. **Batching**: The `embed` method processes multiple texts in a single request when possible. `search_batch` enables parallel query execution.
+2. **Concurrent Search**: Vector store operations can be called concurrently via `DashMap` and parallel batch search.
+3. **Index Strategy**: `FlatIndex` does exact brute-force search (O(n)). For large datasets (>100k), consider implementing HNSW or IVF via the `Index` trait.
+4. **Memory**: In-memory store uses `DashMap` for efficient concurrent access without locking.
+5. **Distance Metrics**: `Cosine` is default for text. `DotProduct` is faster if vectors are pre-normalized. `Euclidean`/`Manhattan` suit spatial data.
+6. **Network**: Embedding requests are async and non-blocking
 
 ## Security
 
@@ -200,9 +284,10 @@ impl TextChunker for MyChunker {
 
 ## Future Enhancements
 
-1. Persistent vector stores (PostgreSQL, Qdrant, Pinecone)
-2. Additional embedding models (Cohere, HuggingFace)
-3. Hybrid search (semantic + keyword)
-4. Document versioning
-5. Cross-encoder reranking
-6. Document deduplication
+1. Persistent vector stores (PostgreSQL pgvector, Qdrant, Pinecone)
+2. Approximate nearest neighbor indexes (HNSW, IVF) via the `Index` trait
+3. Additional embedding models (Cohere, HuggingFace)
+4. Hybrid search (semantic + keyword BM25)
+5. Document versioning
+6. Cross-encoder reranking
+7. Document deduplication

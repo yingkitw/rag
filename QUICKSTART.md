@@ -129,6 +129,39 @@ let model = OllamaEmbeddingModel::new("nomic-embed-text".to_string())
     .with_base_url("http://localhost:11434".to_string());
 ```
 
+### Batch Search
+
+```rust
+use rag::{InMemoryVectorStore, VectorStore};
+
+let queries = vec![
+    vec![1.0, 0.0, 0.0],
+    vec![0.0, 1.0, 0.0],
+];
+
+let results = store.search_batch(&queries, 5).await?;
+// results[0] = top-5 for first query
+// results[1] = top-5 for second query
+```
+
+### Distance Metrics
+
+```rust
+use rag::{InMemoryVectorStore, DistanceMetric};
+
+// Default: Cosine similarity (best for text embeddings)
+let store = InMemoryVectorStore::new();
+
+// Euclidean distance (best for spatial data)
+let store = InMemoryVectorStore::with_metric(DistanceMetric::Euclidean);
+
+// Dot product (fastest if vectors are pre-normalized)
+let store = InMemoryVectorStore::with_metric(DistanceMetric::DotProduct);
+
+// Manhattan/L1 distance
+let store = InMemoryVectorStore::with_metric(DistanceMetric::Manhattan);
+```
+
 ## MCP Server
 
 ### Start MCP Server
