@@ -5,7 +5,6 @@ use rag::{
     retriever::Retriever,
     vector_store::InMemoryVectorStore,
     vector_store::VectorStore,
-    Document,
 };
 use std::path::PathBuf;
 use tokio::fs;

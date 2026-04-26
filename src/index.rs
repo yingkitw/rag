@@ -1,4 +1,3 @@
-use crate::errors::Result;
 use crate::vector_store::{Document, Similarity};
 use std::sync::Arc;
 

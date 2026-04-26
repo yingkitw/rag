@@ -1,4 +1,4 @@
-use rag::{Document, InMemoryVectorStore, MetadataFilter, Similarity, VectorStore};
+use rag::{Document, InMemoryVectorStore, MetadataFilter, VectorStore};
 use tokio;
 
 #[tokio::main]

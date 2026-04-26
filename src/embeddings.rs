@@ -64,6 +64,7 @@ struct OpenAIRequest {
 #[derive(Debug, Deserialize)]
 struct OpenAIResponse {
     data: Vec<OpenAIEmbeddingData>,
+    #[allow(dead_code)]
     model: String,
 }
 

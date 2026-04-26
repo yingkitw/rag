@@ -83,6 +83,7 @@ impl MetadataFilter {
     }
 }
 
+#[allow(async_fn_in_trait)]
 pub trait VectorStore: Send + Sync {
     async fn add(&self, document: Document) -> Result<()>;
     async fn add_batch(&self, documents: Vec<Document>) -> Result<()>;
