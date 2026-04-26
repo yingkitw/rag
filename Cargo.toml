@@ -32,6 +32,9 @@ dashmap = "5.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 md5 = "0.7"
+lopdf = "0.32"
+walkdir = "2.5"
+urlencoding = "2.1"
 
 [dev-dependencies]
 tempfile = "3.8"

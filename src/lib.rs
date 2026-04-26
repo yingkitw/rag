@@ -5,6 +5,7 @@ pub mod chunker;
 pub mod errors;
 pub mod mcp;
 pub mod index;
+pub mod ingestion;
 
 pub use embeddings::{EmbeddingModel, OpenAIEmbeddingModel, EmbeddingRequest, OllamaEmbeddingModel};
 pub use vector_store::{VectorStore, InMemoryVectorStore, MinimalVectorDB, Document, Similarity, MetadataFilter};
@@ -13,3 +14,4 @@ pub use chunker::{TextChunker, FixedSizeChunker, ParagraphChunker, SentenceChunk
 pub use errors::{RagError, Result};
 pub use mcp::{McpServer, McpRequest, McpResponse};
 pub use index::{DistanceMetric, FlatIndex, Index};
+pub use ingestion::{Source, ExtractedDocument, PdfSource, CodebaseSource, WikiSource};
