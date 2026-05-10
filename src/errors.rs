@@ -22,6 +22,9 @@ pub enum RagError {
 
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
+
+    #[error("Graph error: {0}")]
+    GraphError(String),
 }
 
 pub type Result<T> = std::result::Result<T, RagError>;

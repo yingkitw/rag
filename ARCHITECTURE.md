@@ -2,292 +2,224 @@
 
 ## Overview
 
-RAG is a Rust library and CLI for Retrieval-Augmented Generation (RAG) with support for multiple embedding models, vector stores, and interfaces (CLI, MCP, Library).
+This repository is a Rust **library**, **CLI** (`rag`), and **MCP server** (`rag-mcp-server`) for Retrieval-Augmented Generation. Retrieval is deliberately **multi-signal**:
 
-## Core Components
+- **Vectors** — semantic similarity over embedded chunks.
+- **Graph** — entities and co-occurrence (and similar) edges for expansion and structure.
+- **Search-style operations** — top-k limits, scored ranking, listing, counting, and metadata filters.
 
-### 1. Embeddings Module (`src/embeddings.rs`)
+The vector-centric entry point is `Retriever`. The combined vector + graph path is `GraphRagEngine` (library) and a parallel set of MCP tools under the `graph_*` namespace.
 
-**Purpose**: Generate vector embeddings from text using various models.
+## Core components
 
-**Traits**:
-- `EmbeddingModel`: Async trait for embedding generation
-  - `embed(texts)`: Generate embeddings for multiple texts
-  - `embed_single(text)`: Generate embedding for a single text
+### 1. Embeddings (`src/embeddings.rs`)
 
-**Implementations**:
-- `OpenAIEmbeddingModel`: Uses OpenAI's embedding API
-- `OllamaEmbeddingModel`: Uses local Ollama models
+**Purpose:** Turn text into dense vectors.
 
-**Usage**:
-```rust
-let model = OpenAIEmbeddingModel::new("api-key".to_string());
-let embeddings = model.embed(vec!["text1", "text2"]).await?;
-```
+**Trait:**
 
-### 2. Vector Store Module (`src/vector_store.rs`)
+- `EmbeddingModel`: `embed`, `embed_single`.
 
-**Purpose**: Store and retrieve documents with vector similarity search.
+**Implementations:**
 
-**Traits**:
-- `VectorStore`: Async trait for vector storage operations
-  - `add(document)`: Add a single document
-  - `add_batch(documents)`: Add multiple documents
-  - `search(query, top_k)`: Find similar documents
-  - `search_with_filter(query, top_k, filter)`: Find similar documents with metadata filtering
-  - `search_batch(queries, top_k)`: Batch search for multiple queries
-  - `get(id)`: Retrieve document by ID
-  - `delete(id)`: Remove document
-  - `list(limit, offset)`: List documents with pagination
-  - `count()`: Get total document count
-  - `metric()`: Get the configured distance metric
+- `OpenAIEmbeddingModel`
+- `OllamaEmbeddingModel`
 
-**Types**:
-- `Document`: Represents a stored document with content, metadata, and optional embedding
-- `Similarity`: Contains a document and its similarity score
-- `MetadataFilter`: Key-value metadata filtering
-- `cosine_similarity()`: Helper function for computing similarity
+### 2. Vector store (`src/vector_store.rs`)
 
-**Implementations**:
-- `InMemoryVectorStore`: Thread-safe in-memory store using `DashMap` and `FlatIndex`
-- `MinimalVectorDB`: Simple in-memory store using `RwLock<HashMap>` and `FlatIndex`
+**Purpose:** Persist chunks and run similarity search.
 
-### 3. Index Module (`src/index.rs`)
+**Trait `VectorStore`:** `add`, `add_batch`, `search`, `search_with_filter`, `search_batch`, `get`, `delete`, `list`, `count`, `metric`.
 
-**Purpose**: Pluggable vector search indexes with multiple distance metrics.
+**Types:** `Document`, `Similarity`, `MetadataFilter`.
 
-**Traits**:
-- `Index`: Core trait for vector search indexes
-  - `add(document)`: Add document to index
-  - `remove(id)`: Remove document from index
-  - `search(query, top_k)`: Find top-k similar documents
-  - `search_batch(queries, top_k)`: Parallel batch search
-  - `clear()`: Remove all documents
-  - `len()`: Number of indexed documents
-  - `metric()`: Distance metric used
+**Implementations:**
 
-**Distance Metrics** (`DistanceMetric`):
-- `Cosine`: Cosine similarity (default, best for text embeddings)
-- `Euclidean`: Negative Euclidean distance (best for spatial data)
-- `DotProduct`: Raw dot product (best for normalized vectors)
-- `Manhattan`: Negative Manhattan/L1 distance
+- `InMemoryVectorStore` — `DashMap` + pluggable `Index`.
+- `MinimalVectorDB` — `RwLock` map + `FlatIndex`.
 
-**Implementations**:
-- `FlatIndex`: Brute-force exact search with parallel batch query support. Suitable for datasets < 100k documents.
+### 3. Index (`src/index.rs`)
 
-**Utilities** (`utils`):
-- `l2_normalize()`: In-place L2 normalization
-- `l2_normalize_copy()`: Return a new normalized vector
-- `validate_dimensions()`: Validate consistent vector dimensions in a batch
+**Purpose:** Pluggable nearest-neighbor logic and distance metrics.
 
-### 4. Chunker Module (`src/chunker.rs`)
+**Trait `Index`:** `add`, `remove`, `search`, `search_batch`, `clear`, `len`, `metric`.
 
-**Purpose**: Split text into manageable chunks for embedding.
+**Metrics:** `Cosine`, `Euclidean`, `DotProduct`, `Manhattan`.
 
-**Traits**:
-- `TextChunker`: Trait for text chunking strategies
-  - `chunk(text)`: Split text into chunks
+**Implementation:** `FlatIndex` — exact, parallel batch queries; suitable for modest corpus sizes.
 
-**Implementations**:
-- `FixedSizeChunker`: Fixed-size chunks with overlap
-- `ParagraphChunker`: Split by paragraphs (double newlines)
-- `SentenceChunker`: Split by sentences with max sentences per chunk
+### 4. Chunker (`src/chunker.rs`)
 
-### 4. Retriever Module (`src/retriever.rs`)
+**Purpose:** Split documents before embedding.
 
-**Purpose**: High-level interface combining embeddings, chunking, and retrieval.
+**Trait:** `TextChunker::chunk`.
 
-**Methods**:
-- `add_document(content)`: Add and embed a document
-- `add_document_with_metadata(content, metadata)`: Add document with metadata
-- `retrieve(query)`: Get relevant chunks
-- `retrieve_with_scores(query)`: Get chunks with similarity scores
-- `retrieve_filtered(query, filter)`: Get chunks with metadata filtering
+**Implementations:** `FixedSizeChunker`, `ParagraphChunker`, `SentenceChunker`.
 
-### 5. MCP Module (`src/mcp.rs`)
+### 5. Retriever (`src/retriever.rs`)
 
-**Purpose**: Model Context Protocol (MCP) server implementation.
+**Purpose:** Orchestrate chunking, embedding, and vector search for classic RAG.
 
-**Components**:
-- `McpServer`: Handles MCP protocol requests
-- `McpRequest`: Incoming request structure
-- `McpResponse`: Response structure
-- `McpError`: Error structure
+**Methods:** `add_document`, `add_document_with_metadata`, `retrieve`, `retrieve_with_scores`, `retrieve_filtered`.
 
-**Available Tools**:
-- `rag_add_document`: Add documents to the store
-- `rag_query`: Query for relevant documents
-- `rag_list_documents`: List stored documents
-- `rag_count`: Count total documents
+### 6. Graph (`src/graph.rs`)
 
-### 6. Error Handling (`src/errors.rs`)
+**Purpose:** In-memory property graph for RAG augmentation.
 
-**Purpose**: Centralized error types and Result alias.
+**Types:** `GraphNode`, `GraphEdge`, `GraphPath`, `Community`.
 
-**Types**:
-- `RagError`: Enum covering all possible errors
-- `Result<T>`: Type alias for `Result<T, RagError>`
+**`GraphStore`:** add/remove nodes and edges, lookup by id or name, BFS-style reachability, neighbors, degree, density, community detection (label propagation), optional save/load helpers where implemented.
 
-## Architecture Diagram
+### 7. Graph RAG (`src/graph_rag.rs`)
+
+**Purpose:** Single engine that writes to both `VectorStore` and `GraphStore`.
+
+**Pieces:**
+
+- `EntityExtractor` / `SimpleEntityExtractor` — heuristic entities (quoted strings, acronyms, proper nouns).
+- `GraphRagEngine` — `add_document` (chunk, embed, store chunk, link co-occurring entities), `query` — merges vector top-k with chunks linked to entities in the query neighborhood (`graph_depth`, `top_k`).
+
+**Types:** `GraphRagResult`, `EntityInfo`, `GraphInfo` (and related) for structured results.
+
+### 8. Ingestion (`src/ingestion.rs`)
+
+**Purpose:** Pull text from external sources into `ExtractedDocument` records for downstream chunking and embedding.
+
+**Trait:** `Source::extract`.
+
+**Sources:** `PdfSource`, `CodebaseSource`, `WikiSource`, and related helpers.
+
+### 9. MCP (`src/mcp.rs`, binary `src/mcp_server.rs`)
+
+**Purpose:** Expose RAG operations over Model Context Protocol (stdio transport, `rmcp`).
+
+**Handler:** `RagMcpServer` — shared `InMemoryVectorStore`, `GraphStore`, embedding backend (`OpenAI` or `Ollama`), `SimpleEntityExtractor`, and side maps from entity names to chunk ids and reverse.
+
+**Vector tools:**
+
+- `rag_add_document` — chunk, embed, index.
+- `rag_query` — semantic search with scores.
+- `rag_list_documents` — paginated listing.
+- `rag_count` — chunk count.
+
+**Graph and hybrid tools:**
+
+- `graph_build` — like add, but also extracts entities, links co-occurrence, stores entity metadata on chunks, updates graph.
+- `graph_query` — vector search plus graph expansion from query entities; labels hits as `vector` vs `graph`.
+- `graph_get_entity`, `graph_get_neighbors` — introspection.
+- `graph_info`, `graph_communities` — stats and community structure.
+
+### 10. Errors (`src/errors.rs`)
+
+**Purpose:** `RagError` and `Result<T>` alias for unified error handling.
+
+## Architecture diagram
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    CLI / MCP / Library                 │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│                      Retriever                          │
-│  - Coordinates embeddings, chunking, and retrieval     │
-└─────┬───────────────┬───────────────┬───────────────────┘
-      │               │               │
-      ▼               ▼               ▼
-┌─────────────┐ ┌──────────┐ ┌──────────────┐
-│ Embeddings  │ │ Chunker  │ │ Vector Store │
-└─────────────┘ └──────────┘ └──────────────┘
-      │                           │
-      ▼                           ▼
-┌─────────────┐           ┌──────────────┐
-│  OpenAI     │           │   Index      │
-│  Ollama     │           │  (pluggable) │
-└─────────────┘           └──────────────┘
-                                  │
-                                  ▼
-                           ┌──────────────┐
-                           │  FlatIndex   │
-                           │  (HNSW, etc) │
-                           └──────────────┘
+                    ┌──────────────────────────────────────┐
+                    │   CLI (`rag`)  /  Library  /  MCP     │
+                    └────────────────────┬─────────────────┘
+                                         │
+           ┌─────────────────────────────┼─────────────────────────────┐
+           ▼                             ▼                             ▼
+    ┌─────────────┐              ┌──────────────┐              ┌─────────────┐
+    │  Retriever  │              │ GraphRagEngine│             │ RagMcpServer │
+    │ (vector RAG)│              │ (vector+graph)│             │ (both tools) │
+    └──────┬──────┘              └───────┬───────┘              └──────┬──────┘
+           │                            │                             │
+           │              ┌─────────────┴─────────────┐               │
+           │              ▼                           ▼               │
+           │       ┌────────────┐            ┌────────────┐           │
+           │       │ GraphStore │            │EntitySide │◄──────────┤
+           │       │ nodes/edges│            │  maps     │           │
+           │       └────────────┘            └────────────┘           │
+           │                                                          │
+           ▼                            ▼                             ▼
+    ┌─────────────┐              ┌──────────────┐              ┌──────────────┐
+    │ Embeddings  │              │  Chunker      │             │  Chunker     │
+    │ OpenAI/     │              │ (strategies)  │             │ (MCP paths)  │
+    │ Ollama      │              └──────────────┘             └──────────────┘
+    └──────┬──────┘                      │                             │
+           │                              ▼                             ▼
+           │                       ┌──────────────┐             ┌──────────────┐
+           └──────────────────────►│ VectorStore   │◄────────────┤ InMemory*    │
+                                     │ + Index      │             │ + FlatIndex  │
+                                     └──────────────┘             └──────────────┘
+
+    Ingestion:  PdfSource / CodebaseSource / WikiSource  ──► ExtractedDocument ──► Retriever or GraphRagEngine
 ```
 
-## Data Flow
+## Data flow
 
-### Adding a Document
+### Add document (Retriever)
 
-1. User provides document content
-2. Retriever chunks the text using configured chunker
-3. Embedding model generates vectors for each chunk
-4. Chunks with embeddings are stored in vector store
-5. Document IDs are returned
+1. Chunk text.
+2. Embed chunks.
+3. Store in `VectorStore` (index updated).
 
-### Querying
+### Add document with graph (`GraphRagEngine` or MCP `graph_build`)
 
-1. User provides a query
-2. Embedding model generates query vector
-3. Vector store delegates search to its `Index`
-4. Index computes similarity using the configured `DistanceMetric`
-5. Top-k results are returned with scores
-6. Results can be filtered by metadata
+1. Chunk and embed as above.
+2. Extract entities per chunk; ensure nodes in `GraphStore`.
+3. Add co-occurrence edges between entities in the same chunk (with weights where supported).
+4. Record entity-to-chunk and chunk-to-entity mappings.
+5. Persist chunks in `VectorStore`.
+
+### Hybrid query (`GraphRagEngine::query` or MCP `graph_query`)
+
+1. Embed query; run vector `search` for top-k.
+2. Extract query entities; traverse graph to a configured depth.
+3. Collect chunk ids linked to matched entities; merge with vector results (deduplicate, cap at top-k).
+4. Return ranked list with scores where available and provenance (`vector` vs `graph` in MCP JSON).
 
 ## Extensibility
 
-### Adding New Embedding Models
+### New embedding models
 
-Implement the `EmbeddingModel` trait:
+Implement `EmbeddingModel` with `async_trait` and delegate to your provider.
 
-```rust
-#[async_trait]
-impl EmbeddingModel for MyEmbeddingModel {
-    async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
-        // Implementation
-    }
-}
-```
+### New indexes
 
-### Adding New Indexes
+Implement `Index` (for example HNSW) and use it inside a custom `VectorStore` or swap the index inside `InMemoryVectorStore` if the API allows.
 
-Implement the `Index` trait for custom search algorithms:
+### New vector stores
 
-```rust
-impl Index for MyAnnIndex {
-    fn add(&self, document: Document) {
-        // Add to your ANN structure (HNSW, IVF, etc.)
-    }
+Implement `VectorStore` for disk or remote backends.
 
-    fn search(&self, query: &[f32], top_k: usize) -> Vec<Similarity> {
-        // Perform approximate nearest neighbor search
-    }
+### New chunkers
 
-    fn metric(&self) -> DistanceMetric {
-        DistanceMetric::Cosine
-    }
-}
-```
-
-Then use it in a custom `VectorStore`:
+Implement `TextChunker`:
 
 ```rust
-struct AnnVectorStore {
-    index: MyAnnIndex,
-    documents: DashMap<String, Document>,
-}
-
-impl VectorStore for AnnVectorStore {
-    async fn add(&self, document: Document) -> Result<()> {
-        self.index.add(document.clone());
-        self.documents.insert(document.id.clone(), document);
-        Ok(())
-    }
-
-    async fn search(&self, query: &[f32], top_k: usize) -> Result<Vec<Similarity>> {
-        Ok(self.index.search(query, top_k))
-    }
-    // ... other methods
-}
-```
-
-### Adding New Vector Stores
-
-Implement the `VectorStore` trait:
-
-```rust
-#[async_trait]
-impl VectorStore for MyVectorStore {
-    async fn add(&self, document: Document) -> Result<()> {
-        // Implementation
-    }
-    // ... other methods
-}
-```
-
-### Adding New Chunkers
-
-Implement the `TextChunker` trait:
-
-```rust`
 impl TextChunker for MyChunker {
     fn chunk(&self, text: &str) -> Result<Vec<String>> {
-        // Implementation
+        // ...
     }
 }
 ```
+
+### Richer graphs
+
+Implement `EntityExtractor` to feed `GraphRagEngine` with NER or model-based entities.
 
 ## Concurrency
 
-- All public methods are `async` for non-blocking operations
-- `InMemoryVectorStore` uses `DashMap` for thread-safe concurrent access
-- Embedding requests are handled asynchronously via `tokio`
+- Public APIs are async (`tokio`).
+- `InMemoryVectorStore` and `GraphStore` use `DashMap` for concurrent access.
+- Batch index search can run work in parallel depending on `FlatIndex` usage.
 
-## Performance Considerations
+## Performance
 
-1. **Batching**: The `embed` method processes multiple texts in a single request when possible. `search_batch` enables parallel query execution.
-2. **Concurrent Search**: Vector store operations can be called concurrently via `DashMap` and parallel batch search.
-3. **Index Strategy**: `FlatIndex` does exact brute-force search (O(n)). For large datasets (>100k), consider implementing HNSW or IVF via the `Index` trait.
-4. **Memory**: In-memory store uses `DashMap` for efficient concurrent access without locking.
-5. **Distance Metrics**: `Cosine` is default for text. `DotProduct` is faster if vectors are pre-normalized. `Euclidean`/`Manhattan` suit spatial data.
-6. **Network**: Embedding requests are async and non-blocking
+- `FlatIndex` is O(n) per query; plan an ANN `Index` for large n (see [TODO.md](TODO.md)).
+- Prefer batch embedding where the model allows.
+- Normalize vectors when using dot-product metric for stability.
 
 ## Security
 
-- API keys should be stored in environment variables
-- No secrets are logged or exposed in error messages
-- Input validation is performed on all user inputs
+- Read API keys from environment variables; avoid printing them.
+- Treat ingested paths and URLs as untrusted; validate and sandbox as needed in calling code.
 
-## Future Enhancements
+## Related docs
 
-1. Persistent vector stores (PostgreSQL pgvector, Qdrant, Pinecone)
-2. Approximate nearest neighbor indexes (HNSW, IVF) via the `Index` trait
-3. Additional embedding models (Cohere, HuggingFace)
-4. Hybrid search (semantic + keyword BM25)
-5. Document versioning
-6. Cross-encoder reranking
-7. Document deduplication
+- [SPEC.md](SPEC.md) — scope and requirements.
+- [TODO.md](TODO.md) — planned enhancements.

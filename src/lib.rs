@@ -6,12 +6,16 @@ pub mod errors;
 pub mod mcp;
 pub mod index;
 pub mod ingestion;
+pub mod graph;
+pub mod graph_rag;
 
 pub use embeddings::{EmbeddingModel, OpenAIEmbeddingModel, EmbeddingRequest, OllamaEmbeddingModel};
 pub use vector_store::{VectorStore, InMemoryVectorStore, MinimalVectorDB, Document, Similarity, MetadataFilter};
 pub use retriever::Retriever;
 pub use chunker::{TextChunker, FixedSizeChunker, ParagraphChunker, SentenceChunker};
 pub use errors::{RagError, Result};
-pub use mcp::{McpServer, McpRequest, McpResponse};
+pub use mcp::RagMcpServer;
 pub use index::{DistanceMetric, FlatIndex, Index};
 pub use ingestion::{Source, ExtractedDocument, PdfSource, CodebaseSource, WikiSource};
+pub use graph::{GraphStore, GraphNode, GraphEdge, GraphPath, Community};
+pub use graph_rag::{GraphRagEngine, SimpleEntityExtractor, EntityExtractor, GraphRagResult, EntityInfo, GraphInfo};

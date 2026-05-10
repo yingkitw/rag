@@ -1,10 +1,12 @@
 [package]
 name = "rag"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "A Rust library and CLI for Retrieval-Augmented Generation"
 license = "Apache-2.0"
 repository = "https://github.com/yingkitw/rag"
+homepage = "https://github.com/yingkitw/rag"
+docs = "https://docs.rs/rag"
 
 [lib]
 name = "rag"
@@ -35,6 +37,8 @@ md5 = "0.7"
 lopdf = "0.32"
 walkdir = "2.5"
 urlencoding = "2.1"
+rmcp = { version = "1.6", features = ["server", "macros", "transport-io", "schemars"] }
+schemars = "1.0"
 
 [dev-dependencies]
 tempfile = "3.8"
@@ -43,6 +47,7 @@ tempfile = "3.8"
 default = ["openai"]
 openai = []
 ollama = []
+mcp = []
 
 [[example]]
 name = "simple_rag"

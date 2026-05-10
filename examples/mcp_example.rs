@@ -1,82 +1,28 @@
-use rag::{
-    mcp::{McpRequest, McpServer},
-};
+use rag::mcp::RagMcpServer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("RAG MCP Server Example\n");
+    println!("This example demonstrates creating an rmcp-based MCP server.");
+    println!("For a real MCP server, use: rag-mcp-server binary\n");
 
-    let mcp_server = McpServer::new_ollama();
+    let _server = RagMcpServer::new_ollama("nomic-embed-text".to_string(), None);
 
-    println!("1. Initializing MCP server...");
-    let init_req = McpRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(serde_json::json!(1)),
-        method: "initialize".to_string(),
-        params: None,
-    };
+    println!("Server created successfully.");
+    println!("Available tools:");
+    println!("  - rag_add_document: Add documents to vector store");
+    println!("  - rag_query: Semantic search");
+    println!("  - rag_list_documents: List stored documents");
+    println!("  - rag_count: Count documents");
+    println!("  - graph_build: Build knowledge graph from text");
+    println!("  - graph_query: Hybrid vector+graph retrieval");
+    println!("  - graph_get_entity: Get entity details");
+    println!("  - graph_get_neighbors: Explore entity relationships");
+    println!("  - graph_info: Graph statistics");
+    println!("  - graph_communities: Detect entity communities");
 
-    let init_response = mcp_server.handle_request(init_req).await;
-    println!("Initialize response: {}\n", serde_json::to_string_pretty(&init_response)?);
-
-    println!("2. Listing available tools...");
-    let list_req = McpRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(serde_json::json!(2)),
-        method: "tools/list".to_string(),
-        params: None,
-    };
-
-    let list_response = mcp_server.handle_request(list_req).await;
-    println!("Tools list response: {}\n", serde_json::to_string_pretty(&list_response)?);
-
-    println!("3. Adding a document...");
-    let add_req = McpRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(serde_json::json!(3)),
-        method: "tools/call".to_string(),
-        params: Some(serde_json::json!({
-            "name": "rag_add_document",
-            "arguments": {
-                "content": "Rust is a systems programming language that runs blazingly fast, prevents segfaults, and guarantees thread safety. Retrieval-Augmented Generation (RAG) is a technique that enhances large language models by providing them with relevant external context.",
-                "source": "example-doc"
-            }
-        })),
-    };
-
-    let add_response = mcp_server.handle_request(add_req).await;
-    println!("Add document response: {}\n", serde_json::to_string_pretty(&add_response)?);
-
-    println!("4. Querying the document...");
-    let query_req = McpRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(serde_json::json!(4)),
-        method: "tools/call".to_string(),
-        params: Some(serde_json::json!({
-            "name": "rag_query",
-            "arguments": {
-                "query": "What is Rust?",
-                "top_k": 3
-            }
-        })),
-    };
-
-    let query_response = mcp_server.handle_request(query_req).await;
-    println!("Query response: {}\n", serde_json::to_string_pretty(&query_response)?);
-
-    println!("5. Counting documents...");
-    let count_req = McpRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(serde_json::json!(5)),
-        method: "tools/call".to_string(),
-        params: Some(serde_json::json!({
-            "name": "rag_count",
-            "arguments": {}
-        })),
-    };
-
-    let count_response = mcp_server.handle_request(count_req).await;
-    println!("Count response: {}\n", serde_json::to_string_pretty(&count_response)?);
+    println!("\nTo use this server with an MCP client, run:");
+    println!("  cargo run --bin rag-mcp-server");
 
     Ok(())
 }
