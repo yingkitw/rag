@@ -13,7 +13,7 @@ pub struct Document {
     pub id: String,
     pub content: String,
     pub metadata: HashMap<String, String>,
-    #[serde(skip)]
+    #[serde(default)]
     pub embedding: Option<Vec<f32>>,
 }
 
@@ -414,5 +414,106 @@ impl VectorStore for MinimalVectorDB {
 
     fn metric(&self) -> DistanceMetric {
         self.index.metric()
+    }
+}
+
+/// Load every stored document (paged via `list`).
+pub async fn load_all_documents<S: VectorStore>(store: &S) -> Result<Vec<Document>> {
+    let n = store.count().await?;
+    if n == 0 {
+        return Ok(Vec::new());
+    }
+    store.list(n, 0).await
+}
+
+/// [`InMemoryVectorStore`] that flushes JSON to disk after each mutating operation.
+pub struct JsonPersistentVectorStore {
+    path: std::path::PathBuf,
+    inner: InMemoryVectorStore,
+}
+
+impl JsonPersistentVectorStore {
+    pub async fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let path = path.as_ref().to_path_buf();
+        let inner = if path.exists() {
+            InMemoryVectorStore::load_from_file(&path).await?
+        } else {
+            InMemoryVectorStore::new()
+        };
+        Ok(Self { path, inner })
+    }
+
+    async fn flush(&self) -> Result<()> {
+        self.inner.save_to_file(&self.path).await
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl VectorStore for JsonPersistentVectorStore {
+    async fn add(&self, document: Document) -> Result<()> {
+        self.inner.add(document).await?;
+        self.flush().await
+    }
+
+    async fn add_batch(&self, documents: Vec<Document>) -> Result<()> {
+        self.inner.add_batch(documents).await?;
+        self.flush().await
+    }
+
+    async fn search(&self, query: &[f32], top_k: usize) -> Result<Vec<Similarity>> {
+        self.inner.search(query, top_k).await
+    }
+
+    async fn search_with_filter(
+        &self,
+        query: &[f32],
+        top_k: usize,
+        filter: &MetadataFilter,
+    ) -> Result<Vec<Similarity>> {
+        self.inner.search_with_filter(query, top_k, filter).await
+    }
+
+    async fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Result<Vec<Vec<Similarity>>> {
+        self.inner.search_batch(queries, top_k).await
+    }
+
+    async fn get(&self, id: &str) -> Result<Option<Document>> {
+        self.inner.get(id).await
+    }
+
+    async fn delete(&self, id: &str) -> Result<bool> {
+        let ok = self.inner.delete(id).await?;
+        if ok {
+            self.flush().await?;
+        }
+        Ok(ok)
+    }
+
+    async fn delete_batch(&self, ids: Vec<String>) -> Result<usize> {
+        let n = self.inner.delete_batch(ids).await?;
+        if n > 0 {
+            self.flush().await?;
+        }
+        Ok(n)
+    }
+
+    async fn clear(&self) -> Result<()> {
+        self.inner.clear().await?;
+        self.flush().await
+    }
+
+    async fn list(&self, limit: usize, offset: usize) -> Result<Vec<Document>> {
+        self.inner.list(limit, offset).await
+    }
+
+    async fn count(&self) -> Result<usize> {
+        self.inner.count().await
+    }
+
+    fn metric(&self) -> DistanceMetric {
+        self.inner.metric()
     }
 }

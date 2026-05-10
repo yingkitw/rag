@@ -2,9 +2,10 @@
 
 ## Near term
 
-- [ ] Add a short library example for `GraphRagEngine` alongside `simple_rag` (document ingest + hybrid `query`).
-- [ ] Extend integration tests for `GraphStore` / `GraphRagEngine` query merging and edge cases (empty graph, no entities).
-- [ ] Document `OLLAMA_MODEL` for `rag-mcp-server` in README environment section.
+- [x] Add runnable `graph_rag_example`, offline `graph_store_basic`, and fixture-driven `ingest_fixture_rag` under `examples/`.
+- [x] Add deterministic `GraphRagEngine` coverage in `tests/graph_rag_engine_test.rs` and graph-store pattern test in `example_behavior_test.rs`.
+- [ ] Extend integration tests for empty-graph / no-entity edge cases beyond current suite.
+- [ ] Document `OLLAMA_MODEL` for `rag-mcp` in README environment section.
 
 ## Retrieval and search
 

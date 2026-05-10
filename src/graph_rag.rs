@@ -1,10 +1,12 @@
-use crate::chunker::TextChunker;
+use crate::chunker::{ParagraphChunker, TextChunker};
 use crate::embeddings::EmbeddingModel;
 use crate::errors::Result;
-use crate::graph::{GraphEdge, GraphNode, GraphStore};
-use crate::vector_store::{Document, VectorStore};
+use crate::graph::{GraphEdge, GraphNode, GraphPersisted, GraphStore};
+use crate::vector_store::{load_all_documents, Document, InMemoryVectorStore, VectorStore};
 use dashmap::DashMap;
-use std::collections::HashSet;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 #[derive(Debug, Clone)]
 pub struct ExtractedEntity {
@@ -70,6 +72,31 @@ impl EntityExtractor for SimpleEntityExtractor {
         }
 
         entities
+    }
+}
+
+/// Match a fixed list of entity names occurring in text (case-insensitive substring).
+pub struct SeedEntityExtractor {
+    seeds: Vec<String>,
+}
+
+impl SeedEntityExtractor {
+    pub fn new(seeds: Vec<String>) -> Self {
+        Self { seeds }
+    }
+}
+
+impl EntityExtractor for SeedEntityExtractor {
+    fn extract_entities(&self, text: &str) -> Vec<ExtractedEntity> {
+        let lower = text.to_lowercase();
+        self.seeds
+            .iter()
+            .filter(|s| lower.contains(&s.to_lowercase()))
+            .map(|s| ExtractedEntity {
+                name: s.clone(),
+                label: "seed".to_string(),
+            })
+            .collect()
     }
 }
 
@@ -203,6 +230,8 @@ where
     graph_depth: usize,
     entity_chunks: DashMap<String, HashSet<String>>,
     chunk_entities: DashMap<String, HashSet<String>>,
+    /// Edge relation label between co-occurring entities in the same chunk.
+    co_occurrence_relation: String,
 }
 
 impl<E, T, V> GraphRagEngine<E, T, V>
@@ -222,7 +251,13 @@ where
             graph_depth: 2,
             entity_chunks: DashMap::new(),
             chunk_entities: DashMap::new(),
+            co_occurrence_relation: "co_occurs".to_string(),
         }
+    }
+
+    pub fn with_co_occurrence_relation(mut self, relation: impl Into<String>) -> Self {
+        self.co_occurrence_relation = relation.into();
+        self
     }
 
     pub fn with_chunker(mut self, chunker: Box<dyn TextChunker>) -> Self {
@@ -275,6 +310,7 @@ where
                     .insert(node.name.clone());
             }
 
+            let rel = self.co_occurrence_relation.as_str();
             let entity_names: Vec<String> = entities.iter().map(|e| e.name.clone()).collect();
             for i in 0..entity_names.len() {
                 for j in (i + 1)..entity_names.len() {
@@ -285,19 +321,19 @@ where
                         let edge = GraphEdge::new(
                             src.id.clone(),
                             tgt.id.clone(),
-                            "co_occurs".to_string(),
+                            rel.to_string(),
                         )
                         .with_weight(1.0);
 
                         if let Some(existing) = self
                             .graph
-                            .find_edge(&src.id, &tgt.id, "co_occurs")
+                            .find_edge(&src.id, &tgt.id, rel)
                         {
                             let new_weight = existing.weight + 1.0;
                             let new_edge = GraphEdge::new(
                                 src.id.clone(),
                                 tgt.id.clone(),
-                                "co_occurs".to_string(),
+                                rel.to_string(),
                             )
                             .with_weight(new_weight);
                             self.graph.upsert_edge(new_edge)?;
@@ -308,24 +344,24 @@ where
                         let edge_rev = GraphEdge::new(
                             tgt.id.clone(),
                             src.id.clone(),
-                            "co_occurs".to_string(),
+                            rel.to_string(),
                         )
                         .with_weight(1.0);
 
                         if self
                             .graph
-                            .find_edge(&tgt.id, &src.id, "co_occurs")
+                            .find_edge(&tgt.id, &src.id, rel)
                             .is_none()
                         {
                             if let Some(existing) = self
                                 .graph
-                                .find_edge(&tgt.id, &src.id, "co_occurs")
+                                .find_edge(&tgt.id, &src.id, rel)
                             {
                                 let new_weight = existing.weight + 1.0;
                                 let new_edge = GraphEdge::new(
                                     tgt.id.clone(),
                                     src.id.clone(),
-                                    "co_occurs".to_string(),
+                                    rel.to_string(),
                                 )
                                 .with_weight(new_weight);
                                 self.graph.upsert_edge(new_edge)?;
@@ -457,6 +493,37 @@ where
             community_count: communities.len(),
         }
     }
+
+    /// Persist vectors, graph structure, and entity–chunk maps for [`load_from_snapshot_file`].
+    pub async fn save_snapshot<P: AsRef<Path>>(&self, path: P) -> crate::errors::Result<()> {
+        let docs = load_all_documents(&self.vector_store).await?;
+        let entity_chunks: HashMap<String, Vec<String>> = self
+            .entity_chunks
+            .iter()
+            .map(|e| (e.key().clone(), e.value().iter().cloned().collect()))
+            .collect();
+        let chunk_entities: HashMap<String, Vec<String>> = self
+            .chunk_entities
+            .iter()
+            .map(|e| (e.key().clone(), e.value().iter().cloned().collect()))
+            .collect();
+        let snap = GraphRagSnapshot {
+            format_version: 1,
+            documents: docs,
+            graph: GraphPersisted {
+                nodes: self.graph.all_nodes(),
+                edges: self.graph.all_edges(),
+            },
+            entity_chunks,
+            chunk_entities,
+            top_k: self.top_k,
+            graph_depth: self.graph_depth,
+            co_occurrence_relation: self.co_occurrence_relation.clone(),
+        };
+        let f = std::fs::File::create(path.as_ref())?;
+        serde_json::to_writer_pretty(f, &snap)?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -482,6 +549,56 @@ pub struct GraphInfo {
     pub edge_count: usize,
     pub density: f64,
     pub community_count: usize,
+}
+
+/// Serialized [`GraphRagEngine`] state (format_version 1).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphRagSnapshot {
+    pub format_version: u32,
+    pub documents: Vec<Document>,
+    pub graph: GraphPersisted,
+    pub entity_chunks: HashMap<String, Vec<String>>,
+    pub chunk_entities: HashMap<String, Vec<String>>,
+    pub top_k: usize,
+    pub graph_depth: usize,
+    pub co_occurrence_relation: String,
+}
+
+impl<T: EmbeddingModel> GraphRagEngine<SimpleEntityExtractor, T, InMemoryVectorStore> {
+    /// Restore engine state written by [`GraphRagEngine::save_snapshot`].
+    pub async fn load_from_snapshot_file<P: AsRef<Path>>(
+        path: P,
+        extractor: SimpleEntityExtractor,
+        embedding_model: T,
+    ) -> crate::errors::Result<Self> {
+        let text = std::fs::read_to_string(path.as_ref())?;
+        let snap: GraphRagSnapshot = serde_json::from_str(&text)?;
+        let store = InMemoryVectorStore::new();
+        if !snap.documents.is_empty() {
+            store.add_batch(snap.documents).await?;
+        }
+        let graph = GraphStore::from_persisted(snap.graph)?;
+        let entity_chunks = DashMap::new();
+        for (k, v) in snap.entity_chunks {
+            entity_chunks.insert(k, v.into_iter().collect::<HashSet<_>>());
+        }
+        let chunk_entities = DashMap::new();
+        for (k, v) in snap.chunk_entities {
+            chunk_entities.insert(k, v.into_iter().collect::<HashSet<_>>());
+        }
+        Ok(GraphRagEngine {
+            entity_extractor: extractor,
+            embedding_model,
+            vector_store: store,
+            graph,
+            chunker: Box::new(ParagraphChunker),
+            top_k: snap.top_k,
+            graph_depth: snap.graph_depth,
+            entity_chunks,
+            chunk_entities,
+            co_occurrence_relation: snap.co_occurrence_relation,
+        })
+    }
 }
 
 #[cfg(test)]

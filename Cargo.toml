@@ -6,7 +6,7 @@ description = "A Rust library and CLI for Retrieval-Augmented Generation"
 license = "Apache-2.0"
 repository = "https://github.com/yingkitw/rag"
 homepage = "https://github.com/yingkitw/rag"
-docs = "https://docs.rs/rag"
+documentation = "https://docs.rs/rag"
 
 [lib]
 name = "rag"
@@ -17,14 +17,14 @@ name = "rag"
 path = "src/main.rs"
 
 [[bin]]
-name = "rag-mcp-server"
+name = "rag-mcp"
 path = "src/mcp_server.rs"
 
 [dependencies]
 tokio = { version = "1.35", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-clap = { version = "4.4", features = ["derive"] }
+clap = { version = "4.4", features = ["derive", "env"] }
 reqwest = { version = "0.11", features = ["json"] }
 anyhow = "1.0"
 thiserror = "1.0"

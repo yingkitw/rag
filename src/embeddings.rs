@@ -163,3 +163,70 @@ impl EmbeddingModel for OllamaEmbeddingModel {
         Ok(embeddings)
     }
 }
+
+/// HTTP embeddings against an OpenAI-compatible `/embeddings` JSON API.
+///
+/// Sends `POST {base_url}{embeddings_path}` with body `{ "input": string[], "model": string }`.
+#[derive(Clone)]
+pub struct HttpEmbeddingModel {
+    client: Client,
+    api_key: Option<String>,
+    base_url: String,
+    model: String,
+    embeddings_path: String,
+}
+
+impl HttpEmbeddingModel {
+    pub fn openai_compatible(api_key: String, model: String) -> Self {
+        Self {
+            client: Client::new(),
+            api_key: Some(api_key),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model,
+            embeddings_path: "/embeddings".to_string(),
+        }
+    }
+
+    pub fn without_api_key(mut self) -> Self {
+        self.api_key = None;
+        self
+    }
+
+    pub fn with_base_url(mut self, base_url: String) -> Self {
+        self.base_url = base_url;
+        self
+    }
+
+    pub fn with_embeddings_path(mut self, path: String) -> Self {
+        self.embeddings_path = path;
+        self
+    }
+}
+
+#[async_trait]
+impl EmbeddingModel for HttpEmbeddingModel {
+    async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
+        let request = OpenAIRequest {
+            input: texts.clone(),
+            model: self.model.clone(),
+        };
+        let url = format!(
+            "{}/{}",
+            self.base_url.trim_end_matches('/'),
+            self.embeddings_path.trim_start_matches('/')
+        );
+        let mut req = self.client.post(url).json(&request);
+        if let Some(ref key) = self.api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+        let response = req.send().await?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            return Err(RagError::EmbeddingError(error_text));
+        }
+
+        let openai_response: OpenAIResponse = response.json().await?;
+        Ok(openai_response.data.into_iter().map(|d| d.embedding).collect())
+    }
+}

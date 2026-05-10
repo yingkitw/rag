@@ -83,9 +83,9 @@ pub struct Community {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct GraphData {
-    nodes: Vec<GraphNode>,
-    edges: Vec<GraphEdge>,
+pub struct GraphPersisted {
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
 }
 
 pub struct GraphStore {
@@ -633,7 +633,7 @@ impl GraphStore {
     }
 
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        let data = GraphData {
+        let data = GraphPersisted {
             nodes: self.all_nodes(),
             edges: self.all_edges(),
         };
@@ -644,7 +644,12 @@ impl GraphStore {
 
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = fs::read_to_string(path)?;
-        let data: GraphData = serde_json::from_str(&content)?;
+        let data: GraphPersisted = serde_json::from_str(&content)?;
+        Self::from_persisted(data)
+    }
+
+    /// Restore a graph from a [`GraphPersisted`] payload (for example after JSON decode).
+    pub fn from_persisted(data: GraphPersisted) -> Result<Self> {
         let store = Self::new();
 
         for node in data.nodes {

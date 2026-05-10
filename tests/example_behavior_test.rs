@@ -1,4 +1,5 @@
 use rag::{
+    graph::{GraphEdge, GraphNode, GraphStore},
     vector_store::{Document, InMemoryVectorStore, MetadataFilter, MinimalVectorDB, VectorStore},
     DistanceMetric, Index, FlatIndex,
 };
@@ -287,4 +288,34 @@ fn test_flat_index_batch_search_parallel() {
     assert_eq!(results[1][0].document.content, "B");
     // Query 3 should find C first (perfect match)
     assert_eq!(results[2][0].document.content, "C");
+}
+
+// ============================================================
+// Tests validating patterns from examples/graph_store_basic.rs
+// ============================================================
+
+#[test]
+fn test_graph_store_name_lookup_and_neighbors() {
+    let g = GraphStore::new();
+    let alice = GraphNode::new("Alice".to_string(), "person".to_string());
+    let alice_id = alice.id.clone();
+    let bob = GraphNode::new("Bob".to_string(), "person".to_string());
+    let bob_id = bob.id.clone();
+
+    g.add_node(alice).unwrap();
+    g.add_node(bob).unwrap();
+    g.add_edge(GraphEdge::new(
+        alice_id.clone(),
+        bob_id,
+        "collaborates_with".to_string(),
+    ))
+    .unwrap();
+
+    let by_name = g.get_node_by_name("alice").expect("indexed by lowercase name");
+    assert_eq!(by_name.name, "Alice");
+
+    let nbrs = g.neighbors(&alice_id);
+    assert_eq!(nbrs.len(), 1);
+    assert_eq!(nbrs[0].name, "Bob");
+    assert_eq!(g.degree(&alice_id), 1);
 }

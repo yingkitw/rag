@@ -1,7 +1,10 @@
 use crate::chunker::TextChunker;
+use crate::dedup::dedup_similarities;
 use crate::embeddings::EmbeddingModel;
 use crate::errors::Result;
-use crate::vector_store::{Document, VectorStore};
+use crate::hybrid::merge_hybrid;
+use crate::keyword::Bm25Index;
+use crate::vector_store::{load_all_documents, Document, VectorStore};
 
 pub struct Retriever<T, V>
 where
@@ -109,6 +112,53 @@ where
             .await?;
 
         Ok(similarities
+            .into_iter()
+            .map(|s| (s.document.content, s.score))
+            .collect())
+    }
+
+    /// Merge dense vector search with BM25 lexical scores. `alpha` in `[0, 1]` weights vectors.
+    pub async fn retrieve_hybrid(&self, query: &str, alpha: f32) -> Result<Vec<(String, f32)>> {
+        self.retrieve_hybrid_impl(query, alpha, None).await
+    }
+
+    /// [`retrieve_hybrid`](Self::retrieve_hybrid) plus near-duplicate suppression by word Jaccard.
+    pub async fn retrieve_hybrid_dedup(
+        &self,
+        query: &str,
+        alpha: f32,
+        min_jaccard: f32,
+    ) -> Result<Vec<(String, f32)>> {
+        self.retrieve_hybrid_impl(query, alpha, Some(min_jaccard)).await
+    }
+
+    async fn retrieve_hybrid_impl(
+        &self,
+        query: &str,
+        alpha: f32,
+        dedup_jaccard: Option<f32>,
+    ) -> Result<Vec<(String, f32)>> {
+        let docs = load_all_documents(&self.vector_store).await?;
+        if docs.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut map = std::collections::HashMap::new();
+        for d in &docs {
+            map.insert(d.id.clone(), d.clone());
+        }
+        let bm25 = Bm25Index::from_documents(&docs)?;
+        let cap = self.top_k.saturating_mul(4).max(8);
+        let kw = bm25.search(query, cap);
+        let query_embedding = self.embedding_model.embed_single(query).await?;
+        let vec_hits = self
+            .vector_store
+            .search(&query_embedding, cap)
+            .await?;
+        let mut merged = merge_hybrid(&map, &vec_hits, &kw, alpha, self.top_k)?;
+        if let Some(th) = dedup_jaccard {
+            merged = dedup_similarities(merged, th);
+        }
+        Ok(merged
             .into_iter()
             .map(|s| (s.document.content, s.score))
             .collect())
@@ -296,6 +346,27 @@ mod tests {
         let results = retriever.retrieve_filtered("content", "special").await.unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0], "special tagged content");
+    }
+
+    #[tokio::test]
+    async fn test_retriever_hybrid_blends_channels() {
+        let model = MockEmbeddingModel;
+        let store = InMemoryVectorStore::new();
+        let retriever = Retriever::new(model, store)
+            .with_chunker(Box::new(crate::chunker::FixedSizeChunker::new(200, 0)))
+            .with_top_k(3);
+
+        retriever
+            .add_document("rust programming language memory safety".to_string())
+            .await
+            .unwrap();
+        retriever
+            .add_document("python scripting and data science".to_string())
+            .await
+            .unwrap();
+
+        let results = retriever.retrieve_hybrid("rust memory", 0.7).await.unwrap();
+        assert!(!results.is_empty());
     }
 
     #[tokio::test]

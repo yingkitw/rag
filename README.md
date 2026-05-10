@@ -14,7 +14,7 @@ Project docs: [SPEC.md](SPEC.md) (scope and requirements), [ARCHITECTURE.md](ARC
 - Ingestion helpers: `Source` implementations for PDF, codebase trees, and wiki-style URLs (`ingestion` module)
 - Multiple text chunking strategies (fixed-size, paragraph, sentence)
 - CLI for quick ingest and query operations (`rag` binary)
-- MCP server (`rag-mcp-server`) with vector tools (`rag_*`) and graph or hybrid tools (`graph_*`)
+- MCP server (`rag-mcp`) with vector tools (`rag_*`) and graph or hybrid tools (`graph_*`)
 - Library API suitable for custom pipelines
 
 ## Installation
@@ -96,6 +96,9 @@ See the `examples/` directory, for example:
 
 ```bash
 cargo run --example simple_rag
+cargo run --example graph_store_basic
+cargo run --example graph_rag_example
+cargo run --example ingest_fixture_rag
 cargo run --example ingest_pdf
 cargo run --example ingest_codebase
 cargo run --example ingest_wiki
@@ -116,7 +119,7 @@ Run the stdio MCP server (for clients that spawn the process):
 
 ```bash
 export OPENAI_API_KEY="..."   # or rely on Ollama + OLLAMA_URL / OLLAMA_MODEL
-cargo run --bin rag-mcp-server
+cargo run --bin rag-mcp
 ```
 
 Vector tools: `rag_add_document`, `rag_query`, `rag_list_documents`, `rag_count`. Graph and hybrid tools: `graph_build`, `graph_query`, `graph_get_entity`, `graph_get_neighbors`, `graph_info`, `graph_communities`.
@@ -176,6 +179,9 @@ Run examples:
 
 ```bash
 cargo run --example simple_rag
+cargo run --example graph_store_basic
+cargo run --example graph_rag_example
+cargo run --example ingest_fixture_rag
 ```
 
 ## License

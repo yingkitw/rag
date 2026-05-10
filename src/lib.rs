@@ -1,3 +1,9 @@
+pub mod keyword;
+pub mod hybrid;
+pub mod dedup;
+pub mod rerank;
+pub mod index_ivf;
+
 pub mod embeddings;
 pub mod vector_store;
 pub mod retriever;
@@ -9,13 +15,26 @@ pub mod ingestion;
 pub mod graph;
 pub mod graph_rag;
 
-pub use embeddings::{EmbeddingModel, OpenAIEmbeddingModel, EmbeddingRequest, OllamaEmbeddingModel};
-pub use vector_store::{VectorStore, InMemoryVectorStore, MinimalVectorDB, Document, Similarity, MetadataFilter};
+pub use embeddings::{
+    EmbeddingModel, HttpEmbeddingModel, OpenAIEmbeddingModel, EmbeddingRequest, OllamaEmbeddingModel,
+};
+pub use vector_store::{
+    JsonPersistentVectorStore, VectorStore, InMemoryVectorStore, MinimalVectorDB, Document,
+    Similarity, MetadataFilter, load_all_documents,
+};
 pub use retriever::Retriever;
 pub use chunker::{TextChunker, FixedSizeChunker, ParagraphChunker, SentenceChunker};
 pub use errors::{RagError, Result};
 pub use mcp::RagMcpServer;
 pub use index::{DistanceMetric, FlatIndex, Index};
+pub use index_ivf::IvfflatIndex;
 pub use ingestion::{Source, ExtractedDocument, PdfSource, CodebaseSource, WikiSource};
-pub use graph::{GraphStore, GraphNode, GraphEdge, GraphPath, Community};
-pub use graph_rag::{GraphRagEngine, SimpleEntityExtractor, EntityExtractor, GraphRagResult, EntityInfo, GraphInfo};
+pub use graph::{GraphStore, GraphNode, GraphEdge, GraphPath, Community, GraphPersisted};
+pub use graph_rag::{
+    EntityExtractor, ExtractedEntity, GraphInfo, GraphRagEngine, GraphRagResult, GraphRagSnapshot,
+    SeedEntityExtractor, SimpleEntityExtractor, EntityInfo,
+};
+pub use keyword::{tokenize, Bm25Index};
+pub use hybrid::merge_hybrid;
+pub use dedup::{content_jaccard, dedup_similarities};
+pub use rerank::{SimilarityReranker, PassthroughReranker, rerank_similarities};
