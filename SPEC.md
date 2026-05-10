@@ -20,17 +20,17 @@ The goal is a small, composable core that works as a library, a CLI, and an MCP 
 
 - Language: Rust, edition 2024.
 - Async runtime: Tokio.
-- Embeddings: OpenAI and/or local Ollama (see `OPENAI_API_KEY`, `OLLAMA_URL`, `OLLAMA_MODEL`).
-- Vector index: pluggable `Index` trait; default exact search via `FlatIndex`.
-- Serialization: `serde` / `serde_json`; MCP schemas via `schemars` where required for tools.
+- Embeddings: OpenAI and/or local Ollama (see `OPENAI_API_KEY`, `OLLAMA_URL`, `OLLAMA_MODEL`). Optional **OpenAI-compatible HTTP** via [`HttpEmbeddingModel`](src/embeddings.rs).
+- Vector index: pluggable `Index` trait; default exact search via `FlatIndex`; approximate **IVF** via `IvfflatIndex` (`src/index_ivf.rs`).
+- Serialization: `serde` / `serde_json` (including **embeddings** on `Document` for JSON snapshots); MCP schemas via `schemars` where required for tools.
 
 ## Public surfaces
 
 | Surface | Role |
 |--------|------|
-| Library (`rag` crate) | `Retriever` for vector-centric flows; `GraphRagEngine` for hybrid vector + graph; `Source` implementations for ingestion. |
-| Binary `rag` | CLI: add, query, list, count (vector path). |
-| Binary `rag-mcp-server` | stdio MCP server exposing vector tools, graph build/query, and graph introspection tools. |
+| Library (`rag` crate) | `Retriever` (vector + optional **BM25 hybrid**); `GraphRagEngine` (vector + graph + **`GraphRagSnapshot`** save/load); `Source` ingestion; `keyword` / `hybrid` / `dedup` / `rerank` helpers. |
+| Binary `rag` | CLI: persistent state under `RAG_STATE_DIR` (default `.rag`): `add`, `query`, **`hybrid-query`**, `list`, `count`, **`graph-stats`**, **`graph-build`**, **`graph-hybrid-query`**. |
+| Binary `rag-mcp-server` | stdio MCP server (vector + graph tools). Uses `OPENAI_API_KEY` or Ollama (`OLLAMA_URL`, **`OLLAMA_MODEL`** for embedding model name). |
 
 ## Functional requirements
 
@@ -40,13 +40,14 @@ The goal is a small, composable core that works as a library, a CLI, and an MCP 
 - Embed chunks with a pluggable `EmbeddingModel`.
 - Store `Document` values (content, metadata, optional embedding) in a `VectorStore`.
 - Query returns top-k chunks ordered by configured distance metric; optional metadata filter.
+- **Lexical + vector hybrid:** `Retriever::retrieve_hybrid` merges dense search with BM25 via [`merge_hybrid`](src/hybrid.rs); optional dedup via [`dedup_similarities`](src/dedup.rs).
 
 ### Graph path
 
 - Maintain a directed graph of `GraphNode` and `GraphEdge` in `GraphStore`.
 - Extract entities from text via `EntityExtractor` (default: `SimpleEntityExtractor`: quoted strings, acronyms, proper-noun heuristics).
-- Link entities that co-occur in the same chunk (relation such as `co_occurs`).
-- Support traversal (for example BFS), neighbor queries, community detection, and optional persistence helpers where implemented on `GraphStore`.
+- Link entities that co-occur in the same chunk; relation label defaults to `co_occurs` and is **configurable** on `GraphRagEngine` (`with_co_occurrence_relation`).
+- Support traversal (for example BFS), neighbor queries, community detection, and **`GraphPersisted`** / JSON **`GraphRagSnapshot`** (vectors + graph + entity↔chunk maps).
 
 ### Hybrid (vector + graph)
 

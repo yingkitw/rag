@@ -24,6 +24,7 @@ The vector-centric entry point is `Retriever`. The combined vector + graph path 
 
 - `OpenAIEmbeddingModel`
 - `OllamaEmbeddingModel`
+- **`HttpEmbeddingModel`** — OpenAI-compatible embedding HTTP API.
 
 ### 2. Vector store (`src/vector_store.rs`)
 
@@ -35,8 +36,9 @@ The vector-centric entry point is `Retriever`. The combined vector + graph path 
 
 **Implementations:**
 
-- `InMemoryVectorStore` — `DashMap` + pluggable `Index`.
+- `InMemoryVectorStore` — `DashMap` + pluggable `Index`; optional **JSON file** `save_to_file` / `load_from_file`.
 - `MinimalVectorDB` — `RwLock` map + `FlatIndex`.
+- **`JsonPersistentVectorStore`** — wraps `InMemoryVectorStore`, flushes to a path on each mutation.
 
 ### 3. Index (`src/index.rs`)
 
@@ -46,7 +48,7 @@ The vector-centric entry point is `Retriever`. The combined vector + graph path 
 
 **Metrics:** `Cosine`, `Euclidean`, `DotProduct`, `Manhattan`.
 
-**Implementation:** `FlatIndex` — exact, parallel batch queries; suitable for modest corpus sizes.
+**Implementation:** `FlatIndex` — exact, parallel batch queries; `IvfflatIndex` — centroid buckets + probing (approximate).
 
 ### 4. Chunker (`src/chunker.rs`)
 
@@ -60,7 +62,7 @@ The vector-centric entry point is `Retriever`. The combined vector + graph path 
 
 **Purpose:** Orchestrate chunking, embedding, and vector search for classic RAG.
 
-**Methods:** `add_document`, `add_document_with_metadata`, `retrieve`, `retrieve_with_scores`, `retrieve_filtered`.
+**Methods:** `add_document`, `add_document_with_metadata`, `retrieve`, `retrieve_with_scores`, `retrieve_filtered`, **`retrieve_hybrid`**, **`retrieve_hybrid_dedup`**.
 
 ### 6. Graph (`src/graph.rs`)
 
@@ -68,7 +70,7 @@ The vector-centric entry point is `Retriever`. The combined vector + graph path 
 
 **Types:** `GraphNode`, `GraphEdge`, `GraphPath`, `Community`.
 
-**`GraphStore`:** add/remove nodes and edges, lookup by id or name, BFS-style reachability, neighbors, degree, density, community detection (label propagation), optional save/load helpers where implemented.
+**`GraphStore`:** add/remove nodes and edges, lookup by id or name, BFS-style reachability, neighbors, degree, density, community detection (label propagation), `save_to_file` / `load_from_file` / `from_persisted` (`GraphPersisted`).
 
 ### 7. Graph RAG (`src/graph_rag.rs`)
 
@@ -77,7 +79,7 @@ The vector-centric entry point is `Retriever`. The combined vector + graph path 
 **Pieces:**
 
 - `EntityExtractor` / `SimpleEntityExtractor` — heuristic entities (quoted strings, acronyms, proper nouns).
-- `GraphRagEngine` — `add_document` (chunk, embed, store chunk, link co-occurring entities), `query` — merges vector top-k with chunks linked to entities in the query neighborhood (`graph_depth`, `top_k`).
+- `GraphRagEngine` — `add_document`, **`save_snapshot`**, configurable **`co_occurrence_relation`**; `query` merges vector top-k with graph expansion; **`load_from_snapshot_file`** (with `SimpleEntityExtractor` + `InMemoryVectorStore`).
 
 **Types:** `GraphRagResult`, `EntityInfo`, `GraphInfo` (and related) for structured results.
 
@@ -109,7 +111,21 @@ The vector-centric entry point is `Retriever`. The combined vector + graph path 
 - `graph_get_entity`, `graph_get_neighbors` — introspection.
 - `graph_info`, `graph_communities` — stats and community structure.
 
-### 10. Errors (`src/errors.rs`)
+### 10. Supporting retrieval, ANN, and persistence
+
+| Module / type | Role |
+|-----------------|------|
+| `src/keyword.rs` | `Bm25Index`, `tokenize`. |
+| `src/hybrid.rs` | `merge_hybrid` — fuse vector + BM25 scores. |
+| `src/dedup.rs` | Word Jaccard near-duplicate filtering. |
+| `src/rerank.rs` | `SimilarityReranker` trait and `PassthroughReranker`. |
+| `src/index_ivf.rs` | `IvfflatIndex` — IVF-style approximate search implementing `Index`. |
+| `JsonPersistentVectorStore` | `VectorStore` that rewrites `vectors.json` after mutations. |
+| `GraphPersisted` | Serializable graph (`nodes` + `edges`). |
+| `GraphRagSnapshot` | Documents + graph + entity/chunk side maps + engine hyperparameters. |
+| `HttpEmbeddingModel` | Configurable OpenAI-compatible `/embeddings` client. |
+
+### 11. Errors (`src/errors.rs`)
 
 **Purpose:** `RagError` and `Result<T>` alias for unified error handling.
 
@@ -172,6 +188,17 @@ The vector-centric entry point is `Retriever`. The combined vector + graph path 
 3. Collect chunk ids linked to matched entities; merge with vector results (deduplicate, cap at top-k).
 4. Return ranked list with scores where available and provenance (`vector` vs `graph` in MCP JSON).
 
+### Hybrid BM25 + vector (`Retriever::retrieve_hybrid`)
+
+1. List all chunks from `VectorStore`; build `Bm25Index`.
+2. Run vector `search` and BM25 `search` with an enlarged top-k.
+3. `merge_hybrid` normalizes score channels and fuses with `alpha`.
+
+### Snapshot (`GraphRagEngine::save_snapshot`)
+
+1. Serialize all documents (including embeddings), `GraphPersisted`, and entity/chunk maps.
+2. `load_from_snapshot_file` rebuilds `InMemoryVectorStore` and in-memory `DashMap` side tables.
+
 ## Extensibility
 
 ### New embedding models
@@ -210,7 +237,7 @@ Implement `EntityExtractor` to feed `GraphRagEngine` with NER or model-based ent
 
 ## Performance
 
-- `FlatIndex` is O(n) per query; plan an ANN `Index` for large n (see [TODO.md](TODO.md)).
+- `FlatIndex` is O(n) per query; `IvfflatIndex` probes a subset of centroid buckets first (exact within probed buckets). For very large n consider external HNSW (see [TODO.md](TODO.md)).
 - Prefer batch embedding where the model allows.
 - Normalize vectors when using dot-product metric for stability.
 
@@ -218,6 +245,11 @@ Implement `EntityExtractor` to feed `GraphRagEngine` with NER or model-based ent
 
 - Read API keys from environment variables; avoid printing them.
 - Treat ingested paths and URLs as untrusted; validate and sandbox as needed in calling code.
+
+## Persistence and format notes
+
+- `Document` JSON includes `embedding` when present (`#[serde(default)]`). Older files without this field still deserialize with `embedding: None`.
+- **`GraphRagSnapshot` format_version** is `1` (bump and document when breaking on-disk layout).
 
 ## Related docs
 

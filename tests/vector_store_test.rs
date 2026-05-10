@@ -196,6 +196,9 @@ async fn test_vector_store_persistence_in_memory() {
     let list = loaded_store.list(10, 0).await.unwrap();
     assert_eq!(list.len(), 3);
     assert!(list.iter().all(|doc| doc.content.starts_with("Persistent document")));
+    assert!(list
+        .iter()
+        .all(|doc| doc.embedding.as_ref().map(|e| e.len()) == Some(3)));
 }
 
 #[tokio::test]

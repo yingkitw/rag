@@ -13,7 +13,7 @@ Project docs: [SPEC.md](SPEC.md) (scope and requirements), [ARCHITECTURE.md](ARC
 - Search-oriented retrieval: configurable top-k, score-ranked results, and metadata filtering over stored chunks
 - Ingestion helpers: `Source` implementations for PDF, codebase trees, and wiki-style URLs (`ingestion` module)
 - Multiple text chunking strategies (fixed-size, paragraph, sentence)
-- CLI for quick ingest and query operations (`rag` binary)
+- CLI for ingest and query with **persistent state** (`RAG_STATE_DIR`, default `.rag`): vector, **hybrid-query (BM25 + embeddings)**, and **graph** subcommands
 - MCP server (`rag-mcp`) with vector tools (`rag_*`) and graph or hybrid tools (`graph_*`)
 - Library API suitable for custom pipelines
 
@@ -36,17 +36,33 @@ rag = { git = "https://github.com/yingkitw/rag" }
 
 ## Quick Start
 
+State for the CLI lives under **`RAG_STATE_DIR`** (default `.rag`): `vectors.json`, optional `graph.json` and `graph_rag.json`.
+
 ### CLI Usage
 
 ```bash
-# Set your API key (OpenAI or use Ollama)
+# Set your API key (OpenAI) or use Ollama
 export OPENAI_API_KEY="your-api-key-here"
+# Optional when using Ollama for CLI or rag-mcp-server:
+export OLLAMA_MODEL="nomic-embed-text"
 
-# Add a document
+# Add a document (persists chunks to $RAG_STATE_DIR/vectors.json)
 rag add --file document.txt --source "my-docs"
 
-# Query the vector store
+# Vector-only query
 rag query --query "What is Rust?" --top-k 3
+
+# Vector + BM25 hybrid (alpha = vector weight in [0,1])
+rag hybrid-query --query "What is Rust?" --top-k 5 --alpha 0.65
+
+# Graph stats from a saved graph file
+rag graph-stats
+
+# Build GraphRAG snapshot from a file (writes graph_rag.json + graph.json)
+rag graph-build --file document.txt --source "my-docs"
+
+# Query using saved GraphRAG snapshot
+rag graph-hybrid-query --query "Who is mentioned?" --top-k 5
 
 # List documents
 rag list --limit 10 --offset 0
@@ -111,7 +127,7 @@ cargo run --example mcp_example
 
 - `OPENAI_API_KEY`: Your OpenAI API key (optional; if unset, embeddings use Ollama)
 - `OLLAMA_URL`: Ollama server URL (default: `http://localhost:11434`)
-- `OLLAMA_MODEL`: Embedding model name when using Ollama with `rag-mcp-server` (default: `nomic-embed-text`)
+- `OLLAMA_MODEL`: Embedding model when using **Ollama** (CLI, `rag-mcp-server`, and examples; default: `nomic-embed-text`)
 
 ### MCP server
 

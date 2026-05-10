@@ -1,37 +1,18 @@
 # TODO
 
-## Near term
+## Shipped in this repo
 
-- [x] Add runnable `graph_rag_example`, offline `graph_store_basic`, and fixture-driven `ingest_fixture_rag` under `examples/`.
-- [x] Add deterministic `GraphRagEngine` coverage in `tests/graph_rag_engine_test.rs` and graph-store pattern test in `example_behavior_test.rs`.
-- [ ] Extend integration tests for empty-graph / no-entity edge cases beyond current suite.
-- [ ] Document `OLLAMA_MODEL` for `rag-mcp` in README environment section.
+- Near-term tests, hybrid BM25 + vector in `Retriever`, IVF index (`IvfflatIndex`), JSON auto-flush store (`JsonPersistentVectorStore`), graph snapshot (`GraphRagSnapshot` / save + load), configurable co-occurrence relation, `HttpEmbeddingModel`, CLI state dir (`RAG_STATE_DIR`) with `hybrid-query`, `graph-stats`, `graph-build`, `graph-hybrid-query`.
+- Hygiene: `documentation` key fixed in `Cargo.toml` (replaces invalid `package.docs`). Embeddings are now included in JSON persistence for `Document`.
 
-## Retrieval and search
+## Optional follow-ups
 
-- [ ] Library-level hybrid or BM25-style keyword retrieval to complement pure vector search (MCP already combines vector + graph; align library API).
-- [ ] Optional cross-encoder or reranking stage behind a trait (pluggable, default noop).
-- [ ] Deduplication of near-duplicate chunks at ingest or query time.
+- [ ] Install `cargo-audit` and add it to CI: `cargo install cargo-audit && cargo audit`.
+- [ ] PostgreSQL / Qdrant / remote vector backends implementing `VectorStore`.
+- [ ] Full HNSW (e.g. external crate) implementing `Index`; IVF is a first ANN step.
+- [ ] LLM-assisted `EntityExtractor` behind a feature flag.
+- [ ] CLI: merge multiple files into one snapshot; incremental `graph-build`.
 
-## Storage and scale
+## Maintenance
 
-- [ ] Persistent `VectorStore` backends (for example PostgreSQL + pgvector, Qdrant, or file-based).
-- [ ] Approximate nearest neighbor `Index` implementation (HNSW or IVF) for large corpora; keep `FlatIndex` as default for small data.
-- [ ] Graph persistence and load/save aligned with vector store lifecycle.
-
-## Models and extraction
-
-- [ ] Additional `EmbeddingModel` implementations (vendor-agnostic HTTP or popular local runners) behind the same trait.
-- [ ] Optional LLM- or NER-based `EntityExtractor` for higher-quality graphs; keep `SimpleEntityExtractor` as default.
-- [ ] Configurable relation types beyond `co_occurs` where extraction supports it.
-
-## Product and DX
-
-- [ ] CLI commands for graph stats and optional `graph_query` parity with MCP.
-- [ ] Publish or tighten `docs.rs` descriptions for new public types.
-- [ ] Versioning and migration notes for stored graphs / indices when persistence lands.
-
-## Hygiene
-
-- [ ] Periodically run `cargo audit` / dependency updates per project policy.
-- [ ] Keep SPEC / ARCHITECTURE / README in sync after behavioral changes to tools or public API.
+- [ ] Keep [SPEC.md](SPEC.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [README.md](README.md) aligned when behavior changes.
