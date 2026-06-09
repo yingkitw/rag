@@ -154,3 +154,64 @@ async fn graph_rag_snapshot_roundtrip() {
     let q = e2.query("ABRA").await.unwrap();
     assert!(!q.is_empty());
 }
+
+#[tokio::test]
+async fn graph_rag_add_document_with_metadata() {
+    let e = engine();
+    e.add_document_with_metadata(
+        "ABRA is a codename.".to_string(),
+        vec![
+            ("source".to_string(), "test-source".to_string()),
+            ("path".to_string(), "/tmp/doc.txt".to_string()),
+        ],
+    )
+    .await
+    .unwrap();
+
+    let docs = e.vector_store().list(10, 0).await.unwrap();
+    assert_eq!(docs.len(), 1);
+    let doc = &docs[0];
+    assert_eq!(doc.metadata.get("source"), Some(&"test-source".to_string()));
+    assert_eq!(doc.metadata.get("path"), Some(&"/tmp/doc.txt".to_string()));
+}
+
+#[tokio::test]
+async fn graph_rag_incremental_snapshot() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("snap.json");
+
+    let e = engine();
+    e.add_document("First document about ALPHA.".to_string())
+        .await
+        .unwrap();
+    e.save_snapshot(&path).await.unwrap();
+
+    let e2 = GraphRagEngine::load_from_snapshot_file(
+        &path,
+        SimpleEntityExtractor::new(),
+        DeterministicEmbedder::new(48),
+    )
+    .await
+    .unwrap();
+
+    e2.add_document("Second document about BETA.".to_string())
+        .await
+        .unwrap();
+    e2.save_snapshot(&path).await.unwrap();
+
+    let e3 = GraphRagEngine::load_from_snapshot_file(
+        &path,
+        SimpleEntityExtractor::new(),
+        DeterministicEmbedder::new(48),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(e3.vector_store().count().await.unwrap(), 2);
+    assert!(e3.graph_store().node_count() >= 2);
+
+    let q = e3.query("ALPHA").await.unwrap();
+    assert!(!q.is_empty());
+    let q = e3.query("BETA").await.unwrap();
+    assert!(!q.is_empty());
+}

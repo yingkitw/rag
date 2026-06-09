@@ -166,7 +166,7 @@ let store = InMemoryVectorStore::with_metric(DistanceMetric::Manhattan);
 
 ### Start MCP Server
 ```bash
-cargo run --bin rag-mcp-server
+cargo run --bin rag-mcp
 ```
 
 ### MCP Configuration
@@ -180,7 +180,7 @@ Add to your MCP client config:
       "args": [
         "run",
         "--bin",
-        "rag-mcp-server",
+        "rag-mcp",
         "--manifest-path",
         "/path/to/rag/Cargo.toml"
       ],

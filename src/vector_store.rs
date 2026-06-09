@@ -443,6 +443,16 @@ impl JsonPersistentVectorStore {
         Ok(Self { path, inner })
     }
 
+    pub async fn open_with_metric<P: AsRef<Path>>(path: P, metric: DistanceMetric) -> Result<Self> {
+        let path = path.as_ref().to_path_buf();
+        let inner = if path.exists() {
+            InMemoryVectorStore::load_from_file(&path).await?
+        } else {
+            InMemoryVectorStore::with_metric(metric)
+        };
+        Ok(Self { path, inner })
+    }
+
     async fn flush(&self) -> Result<()> {
         self.inner.save_to_file(&self.path).await
     }

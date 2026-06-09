@@ -1,9 +1,10 @@
 use clap::{Parser, Subcommand};
 use rag::{
-    chunker::{FixedSizeChunker, ParagraphChunker},
+    chunker::{FixedSizeChunker, ParagraphChunker, SentenceChunker, TextChunker},
     embeddings::{OllamaEmbeddingModel, OpenAIEmbeddingModel},
     graph::GraphStore,
     graph_rag::{GraphRagEngine, SimpleEntityExtractor},
+    index::DistanceMetric,
     retriever::Retriever,
     vector_store::{InMemoryVectorStore, JsonPersistentVectorStore, VectorStore},
 };
@@ -18,6 +19,14 @@ struct Cli {
     #[arg(long, env = "RAG_STATE_DIR", default_value = ".rag", global = true)]
     state_dir: PathBuf,
 
+    /// Chunking strategy for ingestion and queries.
+    #[arg(long, global = true, default_value = "paragraph")]
+    chunker: String,
+
+    /// Distance metric for vector search.
+    #[arg(long, global = true, default_value = "cosine")]
+    metric: String,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -25,8 +34,9 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     Add {
-        #[arg(short, long)]
-        file: PathBuf,
+        /// File(s) to ingest. Repeatable. Accepts files or directories.
+        #[arg(short, long, num_args = 1..)]
+        file: Vec<PathBuf>,
 
         #[arg(short, long, default_value = "document")]
         source: String,
@@ -87,6 +97,48 @@ async fn ensure_state_dir(dir: &PathBuf) -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
+fn make_chunker(name: &str) -> Box<dyn TextChunker> {
+    match name {
+        "fixed" => Box::new(FixedSizeChunker::new(500, 50)),
+        "paragraph" => Box::new(ParagraphChunker),
+        "sentence" => Box::new(SentenceChunker::default()),
+        _ => Box::new(ParagraphChunker),
+    }
+}
+
+fn parse_metric(name: &str) -> DistanceMetric {
+    match name {
+        "euclidean" => DistanceMetric::Euclidean,
+        "dot" | "dot_product" => DistanceMetric::DotProduct,
+        "manhattan" => DistanceMetric::Manhattan,
+        _ => DistanceMetric::Cosine,
+    }
+}
+
+fn collect_input_paths(files: &[PathBuf]) -> Vec<PathBuf> {
+    let mut result = Vec::new();
+    for path in files {
+        if path.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(path) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_file() {
+                        if let Some(ext) = p.extension() {
+                            let ext = ext.to_string_lossy().to_lowercase();
+                            if ext == "txt" || ext == "md" {
+                                result.push(p);
+                            }
+                        }
+                    }
+                }
+            }
+        } else if path.is_file() {
+            result.push(path.clone());
+        }
+    }
+    result
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -105,45 +157,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Add { file, source } => {
             ensure_state_dir(&cli.state_dir).await?;
             let store_path = cli.state_dir.join("vectors.json");
-            let store = JsonPersistentVectorStore::open(&store_path).await?;
-            let content = fs::read_to_string(&file).await?;
-            println!("Adding document: {}", file.display());
+            let metric = parse_metric(&cli.metric);
+            let store = JsonPersistentVectorStore::open_with_metric(&store_path, metric).await?;
+            let paths = collect_input_paths(&file);
+            if paths.is_empty() {
+                eprintln!("No files to ingest.");
+                return Ok(());
+            }
+            let chunker = make_chunker(&cli.chunker);
 
             if let Some(key) = api_key {
                 let embedding_model = OpenAIEmbeddingModel::new(key);
                 let retriever = Retriever::new(embedding_model, store)
-                    .with_chunker(Box::new(ParagraphChunker))
+                    .with_chunker(chunker)
                     .with_top_k(5);
-
-                let doc_ids = retriever
-                    .add_document_with_metadata(
-                        content,
-                        vec![
-                            ("source".to_string(), source.clone()),
-                            ("path".to_string(), file.display().to_string()),
-                        ],
-                    )
-                    .await?;
-
-                println!("Document added successfully. Chunk IDs: {}", doc_ids);
+                for path in &paths {
+                    let content = fs::read_to_string(path).await?;
+                    println!("Adding document: {}", path.display());
+                    let doc_ids = retriever
+                        .add_document_with_metadata(
+                            content,
+                            vec![
+                                ("source".to_string(), source.clone()),
+                                ("path".to_string(), path.display().to_string()),
+                            ],
+                        )
+                        .await?;
+                    println!("  Chunk IDs: {}", doc_ids);
+                }
             } else {
                 let embedding_model = OllamaEmbeddingModel::new(ollama_model.clone())
                     .with_base_url(ollama_url.clone());
                 let retriever = Retriever::new(embedding_model, store)
-                    .with_chunker(Box::new(ParagraphChunker))
+                    .with_chunker(chunker)
                     .with_top_k(5);
-
-                let doc_ids = retriever
-                    .add_document_with_metadata(
-                        content,
-                        vec![
-                            ("source".to_string(), source.clone()),
-                            ("path".to_string(), file.display().to_string()),
-                        ],
-                    )
-                    .await?;
-
-                println!("Document added successfully. Chunk IDs: {}", doc_ids);
+                for path in &paths {
+                    let content = fs::read_to_string(path).await?;
+                    println!("Adding document: {}", path.display());
+                    let doc_ids = retriever
+                        .add_document_with_metadata(
+                            content,
+                            vec![
+                                ("source".to_string(), source.clone()),
+                                ("path".to_string(), path.display().to_string()),
+                            ],
+                        )
+                        .await?;
+                    println!("  Chunk IDs: {}", doc_ids);
+                }
             }
             println!("State saved under {}", store_path.display());
         }
@@ -154,13 +215,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("No index at {}. Run `rag add` first.", store_path.display());
                 return Ok(());
             }
-            let store = JsonPersistentVectorStore::open(&store_path).await?;
+            let metric = parse_metric(&cli.metric);
+            let store = JsonPersistentVectorStore::open_with_metric(&store_path, metric).await?;
             println!("Query: {}", query);
+            let chunker = make_chunker(&cli.chunker);
 
             if let Some(key) = api_key {
                 let embedding_model = OpenAIEmbeddingModel::new(key);
                 let retriever = Retriever::new(embedding_model, store)
-                    .with_chunker(Box::new(FixedSizeChunker::new(500, 50)))
+                    .with_chunker(chunker)
                     .with_top_k(top_k);
 
                 print_results(retriever.retrieve_with_scores(&query).await?);
@@ -168,7 +231,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let embedding_model = OllamaEmbeddingModel::new(ollama_model.clone())
                     .with_base_url(ollama_url.clone());
                 let retriever = Retriever::new(embedding_model, store)
-                    .with_chunker(Box::new(FixedSizeChunker::new(500, 50)))
+                    .with_chunker(chunker)
                     .with_top_k(top_k);
 
                 print_results(retriever.retrieve_with_scores(&query).await?);
@@ -181,13 +244,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("No index at {}. Run `rag add` first.", store_path.display());
                 return Ok(());
             }
-            let store = JsonPersistentVectorStore::open(&store_path).await?;
+            let metric = parse_metric(&cli.metric);
+            let store = JsonPersistentVectorStore::open_with_metric(&store_path, metric).await?;
             println!("Hybrid query (alpha={}): {}", alpha, query);
+            let chunker = make_chunker(&cli.chunker);
 
             if let Some(key) = api_key {
                 let embedding_model = OpenAIEmbeddingModel::new(key);
                 let retriever = Retriever::new(embedding_model, store)
-                    .with_chunker(Box::new(FixedSizeChunker::new(500, 50)))
+                    .with_chunker(chunker)
                     .with_top_k(top_k);
 
                 print_results(retriever.retrieve_hybrid(&query, alpha).await?);
@@ -195,7 +260,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let embedding_model = OllamaEmbeddingModel::new(ollama_model.clone())
                     .with_base_url(ollama_url.clone());
                 let retriever = Retriever::new(embedding_model, store)
-                    .with_chunker(Box::new(FixedSizeChunker::new(500, 50)))
+                    .with_chunker(chunker)
                     .with_top_k(top_k);
 
                 print_results(retriever.retrieve_hybrid(&query, alpha).await?);
@@ -208,7 +273,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("No index yet.");
                 return Ok(());
             }
-            let store = JsonPersistentVectorStore::open(&store_path).await?;
+            let metric = parse_metric(&cli.metric);
+            let store = JsonPersistentVectorStore::open_with_metric(&store_path, metric).await?;
             let documents = store.list(limit, offset).await?;
             let total = store.count().await?;
 
@@ -232,7 +298,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Total documents in store: 0");
                 return Ok(());
             }
-            let store = JsonPersistentVectorStore::open(&store_path).await?;
+            let metric = parse_metric(&cli.metric);
+            let store = JsonPersistentVectorStore::open_with_metric(&store_path, metric).await?;
             let count = store.count().await?;
             println!("Total documents in store: {}", count);
         }
@@ -258,28 +325,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let content = fs::read_to_string(&file).await?;
             let rag_path = cli.state_dir.join("graph_rag.json");
             let graph_path = cli.state_dir.join("graph.json");
+            let metadata = vec![
+                ("source".to_string(), source.clone()),
+                ("path".to_string(), file.display().to_string()),
+            ];
 
             if let Some(key) = api_key {
                 let embed = OpenAIEmbeddingModel::new(key);
-                let engine = GraphRagEngine::new(
-                    SimpleEntityExtractor::new(),
-                    embed,
-                    InMemoryVectorStore::new(),
-                )
-                .with_chunker(Box::new(ParagraphChunker));
-                engine.add_document(content).await?;
+                let engine = if rag_path.exists() {
+                    println!("Loading existing snapshot from {}", rag_path.display());
+                    GraphRagEngine::load_from_snapshot_file(&rag_path, SimpleEntityExtractor::new(), embed)
+                        .await?
+                        .with_chunker(make_chunker(&cli.chunker))
+                } else {
+                    GraphRagEngine::new(
+                        SimpleEntityExtractor::new(),
+                        embed,
+                        InMemoryVectorStore::new(),
+                    )
+                    .with_chunker(make_chunker(&cli.chunker))
+                };
+                engine.add_document_with_metadata(content, metadata).await?;
                 engine.save_snapshot(&rag_path).await?;
                 engine.graph_store().save_to_file(&graph_path)?;
             } else {
                 let embed = OllamaEmbeddingModel::new(ollama_model.clone())
                     .with_base_url(ollama_url.clone());
-                let engine = GraphRagEngine::new(
-                    SimpleEntityExtractor::new(),
-                    embed,
-                    InMemoryVectorStore::new(),
-                )
-                .with_chunker(Box::new(ParagraphChunker));
-                engine.add_document(content).await?;
+                let engine = if rag_path.exists() {
+                    println!("Loading existing snapshot from {}", rag_path.display());
+                    GraphRagEngine::load_from_snapshot_file(&rag_path, SimpleEntityExtractor::new(), embed)
+                        .await?
+                        .with_chunker(make_chunker(&cli.chunker))
+                } else {
+                    GraphRagEngine::new(
+                        SimpleEntityExtractor::new(),
+                        embed,
+                        InMemoryVectorStore::new(),
+                    )
+                    .with_chunker(make_chunker(&cli.chunker))
+                };
+                engine.add_document_with_metadata(content, metadata).await?;
                 engine.save_snapshot(&rag_path).await?;
                 engine.graph_store().save_to_file(&graph_path)?;
             }
@@ -346,5 +431,110 @@ fn print_graph_results(results: Vec<rag::GraphRagResult>) {
         if !r.entities.is_empty() {
             println!("   entities: {:?}\n", r.entities);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_make_chunker() {
+        let _ = make_chunker("fixed");
+        let _ = make_chunker("paragraph");
+        let _ = make_chunker("sentence");
+        let _ = make_chunker("unknown");
+    }
+
+    #[test]
+    fn test_parse_metric() {
+        assert_eq!(parse_metric("cosine"), DistanceMetric::Cosine);
+        assert_eq!(parse_metric("euclidean"), DistanceMetric::Euclidean);
+        assert_eq!(parse_metric("dot"), DistanceMetric::DotProduct);
+        assert_eq!(parse_metric("dot_product"), DistanceMetric::DotProduct);
+        assert_eq!(parse_metric("manhattan"), DistanceMetric::Manhattan);
+        assert_eq!(parse_metric("unknown"), DistanceMetric::Cosine);
+    }
+
+    #[test]
+    fn test_collect_input_paths_file() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let paths = collect_input_paths(&[tmp.path().to_path_buf()]);
+        assert_eq!(paths.len(), 1);
+    }
+
+    #[test]
+    fn test_collect_input_paths_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt"), "hello").unwrap();
+        std::fs::write(dir.path().join("b.md"), "world").unwrap();
+        std::fs::write(dir.path().join("c.rs"), "code").unwrap();
+        let paths = collect_input_paths(&[dir.path().to_path_buf()]);
+        assert_eq!(paths.len(), 2);
+        let names: Vec<String> = paths
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert!(names.contains(&"a.txt".to_string()));
+        assert!(names.contains(&"b.md".to_string()));
+        assert!(!names.contains(&"c.rs".to_string()));
+    }
+
+    #[test]
+    fn test_cli_add_single_file() {
+        let cli = Cli::try_parse_from(["rag", "add", "--file", "doc.txt", "--source", "test"])
+            .unwrap();
+        match cli.command {
+            Commands::Add { file, source } => {
+                assert_eq!(file.len(), 1);
+                assert_eq!(file[0], PathBuf::from("doc.txt"));
+                assert_eq!(source, "test");
+            }
+            _ => panic!("expected Add command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_add_multiple_files() {
+        let cli = Cli::try_parse_from([
+            "rag", "add", "--file", "a.txt", "--file", "b.txt", "--source", "batch",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Add { file, source } => {
+                assert_eq!(file.len(), 2);
+                assert_eq!(source, "batch");
+            }
+            _ => panic!("expected Add command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_query() {
+        let cli = Cli::try_parse_from(["rag", "query", "--query", "hello", "--top-k", "3"]).unwrap();
+        match cli.command {
+            Commands::Query { query, top_k } => {
+                assert_eq!(query, "hello");
+                assert_eq!(top_k, 3);
+            }
+            _ => panic!("expected Query command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_global_flags() {
+        let cli = Cli::try_parse_from([
+            "rag",
+            "--chunker",
+            "sentence",
+            "--metric",
+            "euclidean",
+            "query",
+            "--query",
+            "test",
+        ])
+        .unwrap();
+        assert_eq!(cli.chunker, "sentence");
+        assert_eq!(cli.metric, "euclidean");
     }
 }

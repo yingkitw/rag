@@ -3,6 +3,7 @@ use crate::embeddings::EmbeddingModel;
 use crate::errors::Result;
 use crate::graph::{GraphEdge, GraphNode, GraphPersisted, GraphStore};
 use crate::vector_store::{load_all_documents, Document, InMemoryVectorStore, VectorStore};
+use async_trait::async_trait;
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -14,8 +15,9 @@ pub struct ExtractedEntity {
     pub label: String,
 }
 
+#[async_trait]
 pub trait EntityExtractor: Send + Sync {
-    fn extract_entities(&self, text: &str) -> Vec<ExtractedEntity>;
+    async fn extract_entities(&self, text: &str) -> Vec<ExtractedEntity>;
 }
 
 pub struct SimpleEntityExtractor {
@@ -36,8 +38,9 @@ impl SimpleEntityExtractor {
     }
 }
 
+#[async_trait]
 impl EntityExtractor for SimpleEntityExtractor {
-    fn extract_entities(&self, text: &str) -> Vec<ExtractedEntity> {
+    async fn extract_entities(&self, text: &str) -> Vec<ExtractedEntity> {
         let mut seen = HashSet::new();
         let mut entities = Vec::new();
 
@@ -86,8 +89,9 @@ impl SeedEntityExtractor {
     }
 }
 
+#[async_trait]
 impl EntityExtractor for SeedEntityExtractor {
-    fn extract_entities(&self, text: &str) -> Vec<ExtractedEntity> {
+    async fn extract_entities(&self, text: &str) -> Vec<ExtractedEntity> {
         let lower = text.to_lowercase();
         self.seeds
             .iter()
@@ -95,6 +99,103 @@ impl EntityExtractor for SeedEntityExtractor {
             .map(|s| ExtractedEntity {
                 name: s.clone(),
                 label: "seed".to_string(),
+            })
+            .collect()
+    }
+}
+
+#[cfg(feature = "llm-extractor")]
+pub struct LlmEntityExtractor {
+    api_key: String,
+    model: String,
+    client: reqwest::Client,
+}
+
+#[cfg(feature = "llm-extractor")]
+impl LlmEntityExtractor {
+    pub fn new(api_key: String) -> Self {
+        Self {
+            api_key,
+            model: "gpt-4o-mini".to_string(),
+            client: reqwest::Client::new(),
+        }
+    }
+
+    pub fn with_model(mut self, model: String) -> Self {
+        self.model = model;
+        self
+    }
+}
+
+#[cfg(feature = "llm-extractor")]
+#[async_trait]
+impl EntityExtractor for LlmEntityExtractor {
+    async fn extract_entities(&self, text: &str) -> Vec<ExtractedEntity> {
+        let prompt = format!(
+            "Extract all named entities from the following text. \
+            Return ONLY a JSON array of objects with 'name' and 'label' fields. \
+            Labels should be one of: person, organization, location, product, technology, concept, or other.\n\nText: {}",
+            text
+        );
+
+        let body = serde_json::json!({
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": "You are a precise entity extraction engine. Output valid JSON only."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.0,
+            "max_tokens": 256,
+        });
+
+        let response = match self
+            .client
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(_) => return Vec::new(),
+        };
+
+        let json: serde_json::Value = match response.json().await {
+            Ok(j) => j,
+            Err(_) => return Vec::new(),
+        };
+
+        let content = json
+            .get("choices")
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("message"))
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str())
+            .unwrap_or("[]");
+
+        let cleaned = content
+            .trim()
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim();
+
+        let parsed: Vec<serde_json::Value> = match serde_json::from_str(cleaned) {
+            Ok(v) => v,
+            Err(_) => return Vec::new(),
+        };
+
+        parsed
+            .into_iter()
+            .filter_map(|v| {
+                let name = v.get("name")?.as_str()?.to_string();
+                let label = v.get("label")?.as_str()?.to_string();
+                if name.is_empty() {
+                    None
+                } else {
+                    Some(ExtractedEntity { name, label })
+                }
             })
             .collect()
     }
@@ -276,16 +377,27 @@ where
     }
 
     pub async fn add_document(&self, content: String) -> Result<Vec<String>> {
+        self.add_document_with_metadata(content, Vec::new()).await
+    }
+
+    pub async fn add_document_with_metadata(
+        &self,
+        content: String,
+        metadata: Vec<(String, String)>,
+    ) -> Result<Vec<String>> {
         let chunks = self.chunker.chunk(&content)?;
         let chunk_embeddings = self.embedding_model.embed(chunks.clone()).await?;
 
         let mut doc_ids = Vec::new();
 
         for (chunk_text, embedding) in chunks.into_iter().zip(chunk_embeddings.into_iter()) {
-            let doc = Document::new(chunk_text.clone()).with_embedding(embedding);
+            let mut doc = Document::new(chunk_text.clone()).with_embedding(embedding);
+            for (key, value) in metadata.clone() {
+                doc = doc.with_metadata(key, value);
+            }
             let doc_id = doc.id.clone();
 
-            let entities = self.entity_extractor.extract_entities(&chunk_text);
+            let entities = self.entity_extractor.extract_entities(&chunk_text).await;
 
             for entity in &entities {
                 let node = match self.graph.get_node_by_name(&entity.name) {
@@ -387,7 +499,7 @@ where
             .search(&query_embedding, self.top_k)
             .await?;
 
-        let query_entities = self.entity_extractor.extract_entities(query);
+        let query_entities = self.entity_extractor.extract_entities(query).await;
         let mut graph_chunk_ids = HashSet::new();
 
         for entity in &query_entities {
@@ -634,11 +746,11 @@ mod tests {
         assert!(results.iter().any(|e| e.contains("San Francisco")));
     }
 
-    #[test]
-    fn test_simple_entity_extractor() {
+    #[tokio::test]
+    async fn test_simple_entity_extractor() {
         let extractor = SimpleEntityExtractor::new();
         let text = r#"OpenAI released "GPT-4" which uses the RAG technique. Microsoft GraphRAG combines knowledge graphs with LLM technology."#;
-        let entities = extractor.extract_entities(text);
+        let entities = extractor.extract_entities(text).await;
 
         let names: Vec<&str> = entities.iter().map(|e| e.name.as_str()).collect();
         assert!(names.iter().any(|n| *n == "GPT-4"));
@@ -646,25 +758,25 @@ mod tests {
         assert!(names.iter().any(|n| *n == "LLM"));
     }
 
-    #[test]
-    fn test_extract_empty_text() {
+    #[tokio::test]
+    async fn test_extract_empty_text() {
         let extractor = SimpleEntityExtractor::new();
-        let entities = extractor.extract_entities("");
+        let entities = extractor.extract_entities("").await;
         assert!(entities.is_empty());
     }
 
-    #[test]
-    fn test_extract_no_entities() {
+    #[tokio::test]
+    async fn test_extract_no_entities() {
         let extractor = SimpleEntityExtractor::new();
-        let entities = extractor.extract_entities("the quick brown fox jumps over the lazy dog");
+        let entities = extractor.extract_entities("the quick brown fox jumps over the lazy dog").await;
         assert!(entities.is_empty());
     }
 
-    #[test]
-    fn test_extract_deduplication() {
+    #[tokio::test]
+    async fn test_extract_deduplication() {
         let extractor = SimpleEntityExtractor::new();
         let text = "RAG is great. RAG is powerful.";
-        let entities = extractor.extract_entities(text);
+        let entities = extractor.extract_entities(text).await;
         let rag_count = entities.iter().filter(|e| e.name == "RAG").count();
         assert_eq!(rag_count, 1);
     }

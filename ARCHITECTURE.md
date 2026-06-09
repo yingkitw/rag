@@ -2,7 +2,7 @@
 
 ## Overview
 
-This repository is a Rust **library**, **CLI** (`rag`), and **MCP server** (`rag-mcp-server`) for Retrieval-Augmented Generation. Retrieval is deliberately **multi-signal**:
+This repository is a Rust **library**, **CLI** (`rag`), and **MCP server** (`rag-mcp`) for Retrieval-Augmented Generation. Retrieval is deliberately **multi-signal**:
 
 - **Vectors** — semantic similarity over embedded chunks.
 - **Graph** — entities and co-occurrence (and similar) edges for expansion and structure.

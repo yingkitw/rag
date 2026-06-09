@@ -30,7 +30,7 @@ The goal is a small, composable core that works as a library, a CLI, and an MCP 
 |--------|------|
 | Library (`rag` crate) | `Retriever` (vector + optional **BM25 hybrid**); `GraphRagEngine` (vector + graph + **`GraphRagSnapshot`** save/load); `Source` ingestion; `keyword` / `hybrid` / `dedup` / `rerank` helpers. |
 | Binary `rag` | CLI: persistent state under `RAG_STATE_DIR` (default `.rag`): `add`, `query`, **`hybrid-query`**, `list`, `count`, **`graph-stats`**, **`graph-build`**, **`graph-hybrid-query`**. |
-| Binary `rag-mcp-server` | stdio MCP server (vector + graph tools). Uses `OPENAI_API_KEY` or Ollama (`OLLAMA_URL`, **`OLLAMA_MODEL`** for embedding model name). |
+| Binary `rag-mcp` | stdio MCP server (vector + graph tools). Uses `OPENAI_API_KEY` or Ollama (`OLLAMA_URL`, **`OLLAMA_MODEL`** for embedding model name). |
 
 ## Functional requirements
 

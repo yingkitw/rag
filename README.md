@@ -43,11 +43,17 @@ State for the CLI lives under **`RAG_STATE_DIR`** (default `.rag`): `vectors.jso
 ```bash
 # Set your API key (OpenAI) or use Ollama
 export OPENAI_API_KEY="your-api-key-here"
-# Optional when using Ollama for CLI or rag-mcp-server:
+# Optional when using Ollama for CLI or rag-mcp:
 export OLLAMA_MODEL="nomic-embed-text"
 
 # Add a document (persists chunks to $RAG_STATE_DIR/vectors.json)
 rag add --file document.txt --source "my-docs"
+
+# Add multiple files
+rag add --file a.txt --file b.md --source "batch"
+
+# Add all .txt / .md from a directory
+rag add --file ./docs/ --source "wiki"
 
 # Vector-only query
 rag query --query "What is Rust?" --top-k 3
@@ -55,11 +61,18 @@ rag query --query "What is Rust?" --top-k 3
 # Vector + BM25 hybrid (alpha = vector weight in [0,1])
 rag hybrid-query --query "What is Rust?" --top-k 5 --alpha 0.65
 
+# Change chunker or distance metric at runtime
+rag query --query "What is Rust?" --chunker sentence --metric euclidean
+
 # Graph stats from a saved graph file
 rag graph-stats
 
 # Build GraphRAG snapshot from a file (writes graph_rag.json + graph.json)
+# Subsequent runs merge into the existing snapshot (incremental)
 rag graph-build --file document.txt --source "my-docs"
+
+# Build another document into the same snapshot
+rag graph-build --file another.txt --source "more-docs"
 
 # Query using saved GraphRAG snapshot
 rag graph-hybrid-query --query "Who is mentioned?" --top-k 5
@@ -108,10 +121,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Examples
 
-See the `examples/` directory, for example:
+See the `examples/` directory:
 
 ```bash
 cargo run --example simple_rag
+cargo run --example pure_memory_rag
+cargo run --example advanced_vector_store
+cargo run --example minimal_vector_db
+cargo run --example batch_search
+cargo run --example distance_metrics
 cargo run --example graph_store_basic
 cargo run --example graph_rag_example
 cargo run --example ingest_fixture_rag
@@ -127,7 +145,7 @@ cargo run --example mcp_example
 
 - `OPENAI_API_KEY`: Your OpenAI API key (optional; if unset, embeddings use Ollama)
 - `OLLAMA_URL`: Ollama server URL (default: `http://localhost:11434`)
-- `OLLAMA_MODEL`: Embedding model when using **Ollama** (CLI, `rag-mcp-server`, and examples; default: `nomic-embed-text`)
+- `OLLAMA_MODEL`: Embedding model when using **Ollama** (CLI, `rag-mcp`, and examples; default: `nomic-embed-text`)
 
 ### MCP server
 
@@ -139,6 +157,46 @@ cargo run --bin rag-mcp
 ```
 
 Vector tools: `rag_add_document`, `rag_query`, `rag_list_documents`, `rag_count`. Graph and hybrid tools: `graph_build`, `graph_query`, `graph_get_entity`, `graph_get_neighbors`, `graph_info`, `graph_communities`.
+
+### CLI Global Flags
+
+- `--chunker <fixed|paragraph|sentence>`: Chunking strategy (default: `paragraph`)
+- `--metric <cosine|euclidean|dot|manhattan>`: Distance metric for vector search (default: `cosine`)
+- `--state-dir <path>`: State directory (default: `.rag`; also set via `RAG_STATE_DIR`)
+
+### Entity Extraction
+
+- `SimpleEntityExtractor`: Rule-based extractor (acronyms, quoted terms, proper nouns)
+- `SeedEntityExtractor`: Match a fixed list of seed entities in text
+- `LlmEntityExtractor` (requires `llm-extractor` feature): Uses an LLM for high-quality NER
+
+Enable the LLM extractor:
+
+```bash
+cargo build --features llm-extractor
+```
+
+```rust
+#[cfg(feature = "llm-extractor")]
+use rag::LlmEntityExtractor;
+
+let extractor = LlmEntityExtractor::new("your-openai-key".to_string());
+let engine = GraphRagEngine::new(extractor, embedding_model, store);
+```
+
+### Vector Indexes
+
+- `FlatIndex`: Exact brute-force search (best for small datasets, < 100k docs)
+- `IvfflatIndex`: IVF (Inverted File) index — first ANN step, faster than flat at scale
+- `HnswIndex`: HNSW (Hierarchical Navigable Small World) approximate index using `hnsw_rs` — best for large datasets where approximate recall is acceptable
+
+```rust
+use rag::{HnswIndex, Index, DistanceMetric};
+
+let index = HnswIndex::with_metric(DistanceMetric::Cosine);
+index.add(doc);
+let results = index.search(&query_embedding, 10);
+```
 
 ### Chunking Strategies
 
@@ -173,6 +231,7 @@ let model = OllamaEmbeddingModel::new("nomic-embed-text".to_string())
 - `Source`, `ExtractedDocument`: Ingestion from PDF, codebase, wiki, and other sources
 - `Document`: Represents a stored document with content, metadata, and optional embedding
 - `TextChunker`: Trait for text chunking strategies
+- `Index`: Trait for vector search indexes (`FlatIndex`, `IvfflatIndex`, `HnswIndex`)
 - `RagMcpServer`: MCP tool router combining vector store and graph (see `mcp` module)
 
 ### Retriever Methods
@@ -195,6 +254,7 @@ Run examples:
 
 ```bash
 cargo run --example simple_rag
+cargo run --example pure_memory_rag
 cargo run --example graph_store_basic
 cargo run --example graph_rag_example
 cargo run --example ingest_fixture_rag

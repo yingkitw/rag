@@ -336,7 +336,7 @@ impl RagMcpServer {
         let mut doc_ids: Vec<String> = Vec::new();
 
         for (chunk_text, embedding) in chunks.into_iter().zip(embeddings.into_iter()) {
-            let entities = self.extractor.extract_entities(&chunk_text);
+            let entities = self.extractor.extract_entities(&chunk_text).await;
             let entity_names: Vec<String> = entities.iter().map(|e| e.name.clone()).collect();
 
             let entity_ids: Vec<String> = entities
@@ -422,7 +422,7 @@ impl RagMcpServer {
                 )
             })?;
 
-        let query_entities = self.extractor.extract_entities(&params.query);
+        let query_entities = self.extractor.extract_entities(&params.query).await;
         let mut graph_chunk_ids = HashSet::new();
 
         for entity in &query_entities {

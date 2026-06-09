@@ -1,6 +1,6 @@
 [package]
 name = "rag"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "A Rust library and CLI for Retrieval-Augmented Generation"
 license = "Apache-2.0"
@@ -39,6 +39,7 @@ walkdir = "2.5"
 urlencoding = "2.1"
 rmcp = { version = "1.6", features = ["server", "macros", "transport-io", "schemars"] }
 schemars = "1.0"
+hnsw_rs = "0.3"
 
 [dev-dependencies]
 tempfile = "3.8"
@@ -48,7 +49,56 @@ default = ["openai"]
 openai = []
 ollama = []
 mcp = []
+llm-extractor = []
 
 [[example]]
 name = "simple_rag"
 path = "examples/simple_rag.rs"
+
+[[example]]
+name = "advanced_vector_store"
+path = "examples/advanced_vector_store.rs"
+
+[[example]]
+name = "batch_search"
+path = "examples/batch_search.rs"
+
+[[example]]
+name = "distance_metrics"
+path = "examples/distance_metrics.rs"
+
+[[example]]
+name = "graph_rag_example"
+path = "examples/graph_rag_example.rs"
+
+[[example]]
+name = "graph_store_basic"
+path = "examples/graph_store_basic.rs"
+
+[[example]]
+name = "ingest_codebase"
+path = "examples/ingest_codebase.rs"
+
+[[example]]
+name = "ingest_fixture_rag"
+path = "examples/ingest_fixture_rag.rs"
+
+[[example]]
+name = "ingest_pdf"
+path = "examples/ingest_pdf.rs"
+
+[[example]]
+name = "ingest_wiki"
+path = "examples/ingest_wiki.rs"
+
+[[example]]
+name = "mcp_example"
+path = "examples/mcp_example.rs"
+
+[[example]]
+name = "minimal_vector_db"
+path = "examples/minimal_vector_db.rs"
+
+[[example]]
+name = "pure_memory_rag"
+path = "examples/pure_memory_rag.rs"

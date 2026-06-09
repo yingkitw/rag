@@ -5,7 +5,7 @@
       "args": [
         "run",
         "--bin",
-        "rag-mcp-server",
+        "rag-mcp",
         "--manifest-path",
         "/Users/yingkitw/Desktop/myproject/rag/Cargo.toml"
       ],

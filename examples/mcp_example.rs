@@ -4,7 +4,7 @@ use rag::mcp::RagMcpServer;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("RAG MCP Server Example\n");
     println!("This example demonstrates creating an rmcp-based MCP server.");
-    println!("For a real MCP server, use: rag-mcp-server binary\n");
+    println!("For a real MCP server, use: rag-mcp binary\n");
 
     let _server = RagMcpServer::new_ollama("nomic-embed-text".to_string(), None);
 
@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  - graph_communities: Detect entity communities");
 
     println!("\nTo use this server with an MCP client, run:");
-    println!("  cargo run --bin rag-mcp-server");
+    println!("  cargo run --bin rag-mcp");
 
     Ok(())
 }

@@ -11,6 +11,7 @@ pub mod chunker;
 pub mod errors;
 pub mod mcp;
 pub mod index;
+pub mod index_hnsw;
 pub mod ingestion;
 pub mod graph;
 pub mod graph_rag;
@@ -27,6 +28,7 @@ pub use chunker::{TextChunker, FixedSizeChunker, ParagraphChunker, SentenceChunk
 pub use errors::{RagError, Result};
 pub use mcp::RagMcpServer;
 pub use index::{DistanceMetric, FlatIndex, Index};
+pub use index_hnsw::HnswIndex;
 pub use index_ivf::IvfflatIndex;
 pub use ingestion::{Source, ExtractedDocument, PdfSource, CodebaseSource, WikiSource};
 pub use graph::{GraphStore, GraphNode, GraphEdge, GraphPath, Community, GraphPersisted};
@@ -34,6 +36,8 @@ pub use graph_rag::{
     EntityExtractor, ExtractedEntity, GraphInfo, GraphRagEngine, GraphRagResult, GraphRagSnapshot,
     SeedEntityExtractor, SimpleEntityExtractor, EntityInfo,
 };
+#[cfg(feature = "llm-extractor")]
+pub use graph_rag::LlmEntityExtractor;
 pub use keyword::{tokenize, Bm25Index};
 pub use hybrid::merge_hybrid;
 pub use dedup::{content_jaccard, dedup_similarities};
