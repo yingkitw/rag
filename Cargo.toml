@@ -7,7 +7,7 @@ license = "Apache-2.0"
 repository = "https://github.com/yingkitw/rag"
 homepage = "https://github.com/yingkitw/rag"
 documentation = "https://docs.rs/rag"
-categories = ["text-processing", "machine-learning"]
+categories = ["text-processing", "data-structures", "algorithms"]
 keywords = ["rag", "retrieval", "vector-search", "mcp", "llm"]
 
 [lib]
