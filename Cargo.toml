@@ -1,6 +1,6 @@
 [package]
 name = "rag"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 description = "A Rust library and CLI for Retrieval-Augmented Generation"
 license = "Apache-2.0"
