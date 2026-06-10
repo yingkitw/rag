@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+#[cfg(feature = "http")]
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -27,6 +28,7 @@ pub trait EmbeddingModel: Send + Sync {
     }
 }
 
+#[cfg(feature = "http")]
 #[derive(Clone)]
 pub struct OpenAIEmbeddingModel {
     client: Client,
@@ -35,6 +37,7 @@ pub struct OpenAIEmbeddingModel {
     base_url: String,
 }
 
+#[cfg(feature = "http")]
 impl OpenAIEmbeddingModel {
     pub fn new(api_key: String) -> Self {
         Self::with_model(api_key, "text-embedding-ada-002".to_string())
@@ -55,12 +58,14 @@ impl OpenAIEmbeddingModel {
     }
 }
 
+#[cfg(feature = "http")]
 #[derive(Debug, Serialize)]
 struct OpenAIRequest {
     input: Vec<String>,
     model: String,
 }
 
+#[cfg(feature = "http")]
 #[derive(Debug, Deserialize)]
 struct OpenAIResponse {
     data: Vec<OpenAIEmbeddingData>,
@@ -68,11 +73,13 @@ struct OpenAIResponse {
     model: String,
 }
 
+#[cfg(feature = "http")]
 #[derive(Debug, Deserialize)]
 struct OpenAIEmbeddingData {
     embedding: Vec<f32>,
 }
 
+#[cfg(feature = "http")]
 #[async_trait]
 impl EmbeddingModel for OpenAIEmbeddingModel {
     async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
@@ -100,6 +107,7 @@ impl EmbeddingModel for OpenAIEmbeddingModel {
     }
 }
 
+#[cfg(feature = "http")]
 #[derive(Clone)]
 pub struct OllamaEmbeddingModel {
     client: Client,
@@ -107,6 +115,7 @@ pub struct OllamaEmbeddingModel {
     base_url: String,
 }
 
+#[cfg(feature = "http")]
 impl OllamaEmbeddingModel {
     pub fn new(model: String) -> Self {
         Self {
@@ -122,17 +131,20 @@ impl OllamaEmbeddingModel {
     }
 }
 
+#[cfg(feature = "http")]
 #[derive(Debug, Serialize)]
 struct OllamaRequest {
     model: String,
     prompt: String,
 }
 
+#[cfg(feature = "http")]
 #[derive(Debug, Deserialize)]
 struct OllamaResponse {
     embedding: Vec<f32>,
 }
 
+#[cfg(feature = "http")]
 #[async_trait]
 impl EmbeddingModel for OllamaEmbeddingModel {
     async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
@@ -167,6 +179,7 @@ impl EmbeddingModel for OllamaEmbeddingModel {
 /// HTTP embeddings against an OpenAI-compatible `/embeddings` JSON API.
 ///
 /// Sends `POST {base_url}{embeddings_path}` with body `{ "input": string[], "model": string }`.
+#[cfg(feature = "http")]
 #[derive(Clone)]
 pub struct HttpEmbeddingModel {
     client: Client,
@@ -176,6 +189,7 @@ pub struct HttpEmbeddingModel {
     embeddings_path: String,
 }
 
+#[cfg(feature = "http")]
 impl HttpEmbeddingModel {
     pub fn openai_compatible(api_key: String, model: String) -> Self {
         Self {
@@ -203,6 +217,7 @@ impl HttpEmbeddingModel {
     }
 }
 
+#[cfg(feature = "http")]
 #[async_trait]
 impl EmbeddingModel for HttpEmbeddingModel {
     async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {

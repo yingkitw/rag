@@ -1,5 +1,6 @@
 use crate::errors::Result;
 use std::collections::HashMap;
+#[allow(unused_imports)]
 use std::path::{Path, PathBuf};
 
 /// A document extracted from an external source, ready for chunking and embedding.
@@ -36,11 +37,13 @@ pub trait Source: Send + Sync {
 // PDF Source
 // ============================================================
 
+#[cfg(feature = "pdf")]
 /// Extract text from PDF files using `lopdf`.
 pub struct PdfSource {
     path: PathBuf,
 }
 
+#[cfg(feature = "pdf")]
 impl PdfSource {
     pub fn new<P: AsRef<Path>>(path: P) -> Self {
         Self {
@@ -49,6 +52,7 @@ impl PdfSource {
     }
 }
 
+#[cfg(feature = "pdf")]
 impl Source for PdfSource {
     async fn extract(&self) -> Result<Vec<ExtractedDocument>> {
         let doc = lopdf::Document::load(&self.path).map_err(|e| {
@@ -92,6 +96,7 @@ impl Source for PdfSource {
 }
 
 /// Extract text strings from a PDF page by walking content streams.
+#[cfg(feature = "pdf")]
 fn extract_text_from_page(doc: &lopdf::Document, page: &lopdf::Dictionary) -> Result<String> {
     let mut text = String::new();
 
@@ -119,6 +124,7 @@ fn extract_text_from_page(doc: &lopdf::Document, page: &lopdf::Dictionary) -> Re
 
 /// Naive text extraction from raw PDF content stream bytes.
 /// Looks for text operators (TJ, Tj) and extracts string operands.
+#[cfg(feature = "pdf")]
 fn extract_text_from_content(data: &[u8]) -> String {
     let mut text = String::new();
     let mut i = 0;
@@ -149,6 +155,7 @@ fn extract_text_from_content(data: &[u8]) -> String {
 }
 
 /// Find a literal string `(...)` immediately before position `pos`.
+#[cfg(feature = "pdf")]
 fn find_preceding_string(data: &[u8], pos: usize) -> Option<(usize, usize)> {
     let mut depth = 0;
     let mut end = pos;
@@ -188,6 +195,7 @@ fn find_preceding_string(data: &[u8], pos: usize) -> Option<(usize, usize)> {
 }
 
 /// Find an array `[...]` immediately before position `pos`.
+#[cfg(feature = "pdf")]
 fn find_preceding_array(data: &[u8], pos: usize) -> Option<(usize, usize)> {
     let mut end = pos;
     while end > 0 && data[end - 1].is_ascii_whitespace() {
@@ -217,6 +225,7 @@ fn find_preceding_array(data: &[u8], pos: usize) -> Option<(usize, usize)> {
 }
 
 /// Extract all literal strings from a PDF array slice.
+#[cfg(feature = "pdf")]
 fn extract_strings_from_array(data: &[u8]) -> String {
     let mut result = String::new();
     let mut i = 0;
@@ -236,6 +245,7 @@ fn extract_strings_from_array(data: &[u8]) -> String {
 }
 
 /// Find the matching `)` for a `(` at position `start`.
+#[cfg(feature = "pdf")]
 fn find_matching_paren(data: &[u8], start: usize) -> Option<usize> {
     let mut depth = 1;
     let mut i = start + 1;
@@ -257,6 +267,7 @@ fn find_matching_paren(data: &[u8], start: usize) -> Option<usize> {
 }
 
 /// Decode a PDF string (handling common escapes).
+#[cfg(feature = "pdf")]
 fn decode_pdf_string(data: &[u8]) -> Result<String> {
     let mut result = String::with_capacity(data.len());
     let mut i = 0;
@@ -303,6 +314,7 @@ fn decode_pdf_string(data: &[u8]) -> Result<String> {
 // Codebase Source
 // ============================================================
 
+#[cfg(feature = "ingest")]
 /// Extract text from source code files in a directory tree.
 pub struct CodebaseSource {
     root: PathBuf,
@@ -310,6 +322,7 @@ pub struct CodebaseSource {
     max_file_size: usize,
 }
 
+#[cfg(feature = "ingest")]
 impl CodebaseSource {
     pub fn new<P: AsRef<Path>>(root: P) -> Self {
         Self {
@@ -337,6 +350,7 @@ impl CodebaseSource {
     }
 }
 
+#[cfg(feature = "ingest")]
 impl Source for CodebaseSource {
     async fn extract(&self) -> Result<Vec<ExtractedDocument>> {
         let mut docs = Vec::new();
@@ -411,12 +425,14 @@ impl Source for CodebaseSource {
 // Wiki Source
 // ============================================================
 
+#[cfg(feature = "http")]
 /// Extract text from Wikipedia pages via the REST API.
 pub struct WikiSource {
     title: String,
     language: String,
 }
 
+#[cfg(feature = "http")]
 impl WikiSource {
     pub fn new(title: impl Into<String>) -> Self {
         Self {
@@ -431,6 +447,7 @@ impl WikiSource {
     }
 }
 
+#[cfg(feature = "http")]
 impl Source for WikiSource {
     async fn extract(&self) -> Result<Vec<ExtractedDocument>> {
         let url = format!(
@@ -509,6 +526,7 @@ mod tests {
         assert_eq!(doc.metadata.get("lang"), Some(&"rust".to_string()));
     }
 
+    #[cfg(feature = "ingest")]
     #[test]
     fn test_codebase_source_new() {
         let src = CodebaseSource::new("/tmp/test");
@@ -517,18 +535,21 @@ mod tests {
         assert_eq!(src.max_file_size, 1024 * 1024);
     }
 
+    #[cfg(feature = "ingest")]
     #[test]
     fn test_codebase_source_with_extensions() {
         let src = CodebaseSource::new("/tmp/test").with_extensions(vec!["rs".to_string()]);
         assert_eq!(src.extensions, vec!["rs".to_string()]);
     }
 
+    #[cfg(feature = "ingest")]
     #[test]
     fn test_codebase_source_with_max_file_size() {
         let src = CodebaseSource::new("/tmp/test").with_max_file_size(512);
         assert_eq!(src.max_file_size, 512);
     }
 
+    #[cfg(feature = "http")]
     #[test]
     fn test_wiki_source_new() {
         let src = WikiSource::new("Rust (programming language)");
@@ -536,18 +557,21 @@ mod tests {
         assert_eq!(src.language, "en");
     }
 
+    #[cfg(feature = "http")]
     #[test]
     fn test_wiki_source_with_language() {
         let src = WikiSource::new("Rust").with_language("ja");
         assert_eq!(src.language, "ja");
     }
 
+    #[cfg(feature = "pdf")]
     #[test]
     fn test_pdf_source_new() {
         let src = PdfSource::new("/tmp/test.pdf");
         assert_eq!(src.path, PathBuf::from("/tmp/test.pdf"));
     }
 
+    #[cfg(feature = "pdf")]
     #[test]
     fn test_decode_pdf_string_simple() {
         let data = b"hello world";
@@ -555,6 +579,7 @@ mod tests {
         assert_eq!(result, "hello world");
     }
 
+    #[cfg(feature = "pdf")]
     #[test]
     fn test_decode_pdf_string_with_escapes() {
         let data = b"hello\\nworld";
@@ -562,18 +587,21 @@ mod tests {
         assert_eq!(result, "hello\nworld");
     }
 
+    #[cfg(feature = "pdf")]
     #[test]
     fn test_find_matching_paren() {
         let data = b"(hello world)";
         assert_eq!(find_matching_paren(data, 0), Some(12));
     }
 
+    #[cfg(feature = "pdf")]
     #[test]
     fn test_find_matching_paren_nested() {
         let data = b"(a (b) c)";
         assert_eq!(find_matching_paren(data, 0), Some(8));
     }
 
+    #[cfg(feature = "pdf")]
     #[test]
     fn test_extract_strings_from_array() {
         let data = b"(hello) 123 (world)";
@@ -581,6 +609,7 @@ mod tests {
         assert_eq!(result, "helloworld");
     }
 
+    #[cfg(feature = "ingest")]
     #[tokio::test]
     async fn test_codebase_source_extracts_files() {
         let dir = tempfile::tempdir().unwrap();
@@ -607,6 +636,7 @@ mod tests {
         assert!(contents.iter().any(|c| c.contains("[package]")));
     }
 
+    #[cfg(feature = "ingest")]
     #[tokio::test]
     async fn test_codebase_source_skips_hidden_and_build_dirs() {
         let dir = tempfile::tempdir().unwrap();
@@ -626,6 +656,7 @@ mod tests {
         assert_eq!(docs[0].source, "main.rs");
     }
 
+    #[cfg(feature = "ingest")]
     #[tokio::test]
     async fn test_codebase_source_respects_max_file_size() {
         let dir = tempfile::tempdir().unwrap();

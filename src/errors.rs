@@ -5,6 +5,7 @@ pub enum RagError {
     #[error("Embedding API error: {0}")]
     EmbeddingError(String),
 
+    #[cfg(feature = "http")]
     #[error("HTTP request failed: {0}")]
     HttpError(#[from] reqwest::Error),
 
@@ -58,6 +59,7 @@ mod tests {
         assert_eq!(format!("{}", err), "Invalid configuration: chunk_size must be > 0");
     }
 
+    #[cfg(feature = "http")]
     #[test]
     fn test_from_reqwest_error() {
         // reqwest::Error can't be constructed easily without a client,
