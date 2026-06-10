@@ -8,7 +8,7 @@ repository = "https://github.com/yingkitw/rag"
 homepage = "https://github.com/yingkitw/rag"
 documentation = "https://docs.rs/rag"
 categories = ["text-processing", "machine-learning"]
-keywords = ["rag", "retrieval-augmented-generation", "vector-search", "mcp", "llm"]
+keywords = ["rag", "retrieval", "vector-search", "mcp", "llm"]
 
 [lib]
 name = "rag"
