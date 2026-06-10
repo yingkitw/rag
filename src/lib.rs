@@ -3,6 +3,13 @@ pub mod hybrid;
 pub mod dedup;
 pub mod rerank;
 pub mod index_ivf;
+pub mod diversify;
+pub mod aggregation;
+pub mod fuzzy;
+pub mod sparse;
+pub mod rerank_external;
+pub mod query_rewriting;
+pub mod contextual;
 
 pub mod embeddings;
 pub mod vector_store;
@@ -38,7 +45,14 @@ pub use graph_rag::{
 };
 #[cfg(feature = "llm-extractor")]
 pub use graph_rag::LlmEntityExtractor;
-pub use keyword::{tokenize, Bm25Index};
-pub use hybrid::merge_hybrid;
+pub use keyword::{tokenize, Bm25Index, Bm25Config, FieldBm25Index};
+pub use hybrid::{merge_hybrid, rrf_fusion};
 pub use dedup::{content_jaccard, dedup_similarities};
 pub use rerank::{SimilarityReranker, PassthroughReranker, rerank_similarities};
+pub use diversify::diversify;
+pub use aggregation::{count_by, group_by, sum_by};
+pub use fuzzy::{levenshtein, is_fuzzy_match, fuzzy_filter};
+pub use sparse::{SparseVector, SparseIndex};
+pub use rerank_external::{CohereReranker, VoyageReranker, MixedBreadReranker};
+pub use query_rewriting::QueryRewriter;
+pub use contextual::ContextualRetrieval;

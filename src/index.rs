@@ -97,6 +97,14 @@ pub trait Index: Send + Sync {
     /// Search for the top-k most similar documents to the query vector.
     fn search(&self, query: &[f32], top_k: usize) -> Vec<Similarity>;
 
+    /// Exact kNN search over documents matching a predicate (exhaustive, not approximate).
+    fn search_exact_filtered(
+        &self,
+        query: &[f32],
+        top_k: usize,
+        filter: &dyn Fn(&Document) -> bool,
+    ) -> Vec<Similarity>;
+
     /// Batch search: find top-k for each query vector.
     fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Vec<Vec<Similarity>> {
         queries
@@ -182,6 +190,38 @@ impl Index for FlatIndex {
             .iter()
             .filter_map(|entry| {
                 let doc = entry.value();
+                if let Some(embedding) = &doc.embedding {
+                    let score = metric.similarity(query, embedding);
+                    Some(Similarity {
+                        document: (**doc).clone(),
+                        score,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        similarities.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        similarities.truncate(top_k);
+        similarities
+    }
+
+    fn search_exact_filtered(
+        &self,
+        query: &[f32],
+        top_k: usize,
+        filter: &dyn Fn(&Document) -> bool,
+    ) -> Vec<Similarity> {
+        let metric = self.metric;
+        let mut similarities: Vec<Similarity> = self
+            .documents
+            .iter()
+            .filter_map(|entry| {
+                let doc = entry.value();
+                if !filter(doc) {
+                    return None;
+                }
                 if let Some(embedding) = &doc.embedding {
                     let score = metric.similarity(query, embedding);
                     Some(Similarity {

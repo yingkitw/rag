@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use crate::errors::{RagError, Result};
-use crate::vector_store::Similarity;
+use crate::vector_store::{Document, Similarity};
 
 fn min_max_norm(scores: &[f32]) -> Vec<f32> {
     if scores.is_empty() {
@@ -23,6 +23,32 @@ fn min_max_norm(scores: &[f32]) -> Vec<f32> {
 
 /// Merge vector-ranked and BM25-ranked hits. `alpha` in [0, 1] weights the vector channel
 /// (1 - alpha weights lexical). Documents are keyed by id via `docs`.
+/// Fuse multiple ranked result lists using Reciprocal Rank Fusion.
+/// `rank_constant` is the k parameter (default 60).
+pub fn rrf_fusion(result_lists: &[Vec<Similarity>], rank_constant: usize, top_k: usize) -> Vec<Similarity> {
+    if result_lists.is_empty() || top_k == 0 {
+        return Vec::new();
+    }
+    let mut scores: std::collections::HashMap<String, (f32, Option<Document>)> = std::collections::HashMap::new();
+    for results in result_lists {
+        for (rank, item) in results.iter().enumerate() {
+            let rrf_score = 1.0 / (rank_constant as f32 + (rank + 1) as f32);
+            let entry = scores.entry(item.document.id.clone()).or_insert((0.0, None));
+            entry.0 += rrf_score;
+            if entry.1.is_none() {
+                entry.1 = Some(item.document.clone());
+            }
+        }
+    }
+    let mut fused: Vec<(String, f32, Document)> = scores
+        .into_iter()
+        .filter_map(|(id, (score, doc))| doc.map(|d| (id, score, d)))
+        .collect();
+    fused.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    fused.truncate(top_k);
+    fused.into_iter().map(|(_id, score, doc)| Similarity { document: doc, score }).collect()
+}
+
 pub fn merge_hybrid(
     docs_by_id: &HashMap<String, crate::vector_store::Document>,
     vector_hits: &[Similarity],
@@ -92,6 +118,24 @@ pub fn merge_hybrid(
 mod tests {
     use super::*;
     use crate::vector_store::Document;
+
+    #[test]
+    fn rrf_fuses_by_rank() {
+        let d1 = Document::new("a".to_string());
+        let d2 = Document::new("b".to_string());
+        let d3 = Document::new("c".to_string());
+        let list1 = vec![
+            Similarity { document: d1.clone(), score: 1.0 },
+            Similarity { document: d2.clone(), score: 0.5 },
+        ];
+        let list2 = vec![
+            Similarity { document: d3.clone(), score: 1.0 },
+            Similarity { document: d1.clone(), score: 0.5 },
+        ];
+        let fused = rrf_fusion(&[list1, list2], 60, 10);
+        assert!(!fused.is_empty());
+        assert!(fused.iter().any(|s| s.document.id == d1.id));
+    }
 
     #[test]
     fn merge_balances_channels() {

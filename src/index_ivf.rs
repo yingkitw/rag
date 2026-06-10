@@ -214,6 +214,35 @@ impl Index for IvfflatIndex {
         *self.dimension.read().unwrap()
     }
 
+    fn search_exact_filtered(
+        &self,
+        query: &[f32],
+        top_k: usize,
+        filter: &dyn Fn(&Document) -> bool,
+    ) -> Vec<Similarity> {
+        let mut similarities: Vec<Similarity> = self
+            .documents
+            .iter()
+            .filter_map(|entry| {
+                let doc = entry.value();
+                if !filter(doc) {
+                    return None;
+                }
+                if let Some(embedding) = &doc.embedding {
+                    Some(Similarity {
+                        document: (**doc).clone(),
+                        score: self.metric.similarity(query, embedding),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+        similarities.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        similarities.truncate(top_k);
+        similarities
+    }
+
     fn metric(&self) -> DistanceMetric {
         self.metric
     }

@@ -204,6 +204,35 @@ impl Index for HnswIndex {
         results
     }
 
+    fn search_exact_filtered(
+        &self,
+        query: &[f32],
+        top_k: usize,
+        filter: &dyn Fn(&Document) -> bool,
+    ) -> Vec<Similarity> {
+        let mut similarities: Vec<Similarity> = self
+            .documents
+            .iter()
+            .filter_map(|entry| {
+                let doc = entry.value();
+                if !filter(doc) {
+                    return None;
+                }
+                if let Some(embedding) = &doc.embedding {
+                    let score = self.distance_to_similarity(
+                        Self::make_dist_fn(self.metric).eval(query, embedding),
+                    );
+                    Some(Similarity { document: (**doc).clone(), score })
+                } else {
+                    None
+                }
+            })
+            .collect();
+        similarities.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        similarities.truncate(top_k);
+        similarities
+    }
+
     fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Vec<Vec<Similarity>> {
         queries.iter().map(|q| self.search(q, top_k)).collect()
     }
