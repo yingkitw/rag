@@ -7,6 +7,8 @@ license = "Apache-2.0"
 repository = "https://github.com/yingkitw/rag"
 homepage = "https://github.com/yingkitw/rag"
 documentation = "https://docs.rs/rag"
+categories = ["text-processing", "machine-learning"]
+keywords = ["rag", "retrieval-augmented-generation", "vector-search", "mcp", "llm"]
 
 [lib]
 name = "rag"
@@ -102,3 +104,27 @@ path = "examples/minimal_vector_db.rs"
 [[example]]
 name = "pure_memory_rag"
 path = "examples/pure_memory_rag.rs"
+
+[[example]]
+name = "rrf_hybrid_search"
+path = "examples/rrf_hybrid_search.rs"
+
+[[example]]
+name = "configurable_bm25"
+path = "examples/configurable_bm25.rs"
+
+[[example]]
+name = "diversification_aggregation"
+path = "examples/diversification_aggregation.rs"
+
+[[example]]
+name = "sparse_vector_search"
+path = "examples/sparse_vector_search.rs"
+
+[[example]]
+name = "contextual_retrieval"
+path = "examples/contextual_retrieval.rs"
+
+[[example]]
+name = "query_rewriting"
+path = "examples/query_rewriting.rs"

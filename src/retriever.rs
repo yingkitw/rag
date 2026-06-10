@@ -15,6 +15,8 @@ where
     vector_store: V,
     chunker: Box<dyn TextChunker>,
     top_k: usize,
+    /// Cached BM25 index, invalidated when document count changes.
+    bm25_cache: std::sync::Mutex<Option<(usize, Bm25Index)>>,
 }
 
 impl<T, V> Retriever<T, V>
@@ -28,7 +30,13 @@ where
             vector_store,
             chunker: Box::new(crate::chunker::FixedSizeChunker::default()),
             top_k: 5,
+            bm25_cache: std::sync::Mutex::new(None),
         }
+    }
+
+    fn invalidate_bm25_cache(&self) {
+        let mut guard = self.bm25_cache.lock().unwrap();
+        *guard = None;
     }
 
     pub fn with_chunker(mut self, chunker: Box<dyn TextChunker>) -> Self {
@@ -60,6 +68,7 @@ where
             doc_ids.push(id);
         }
 
+        self.invalidate_bm25_cache();
         Ok(doc_ids.join(","))
     }
 
@@ -88,6 +97,7 @@ where
             doc_ids.push(id);
         }
 
+        self.invalidate_bm25_cache();
         Ok(doc_ids.join(","))
     }
 
@@ -146,9 +156,26 @@ where
         for d in &docs {
             map.insert(d.id.clone(), d.clone());
         }
-        let bm25 = Bm25Index::from_documents(&docs)?;
+        let count = docs.len();
         let cap = self.top_k.saturating_mul(4).max(8);
-        let kw = bm25.search(query, cap);
+        let kw = {
+            let mut cache = self.bm25_cache.lock().unwrap();
+            if let Some((cached_count, ref idx)) = *cache {
+                if cached_count == count {
+                    idx.search(query, cap)
+                } else {
+                    let idx = Bm25Index::from_documents(&docs)?;
+                    let hits = idx.search(query, cap);
+                    *cache = Some((count, idx));
+                    hits
+                }
+            } else {
+                let idx = Bm25Index::from_documents(&docs)?;
+                let hits = idx.search(query, cap);
+                *cache = Some((count, idx));
+                hits
+            }
+        };
         let query_embedding = self.embedding_model.embed_single(query).await?;
         let vec_hits = self
             .vector_store

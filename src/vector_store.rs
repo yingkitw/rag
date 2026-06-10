@@ -194,13 +194,22 @@ impl VectorStore for InMemoryVectorStore {
         top_k: usize,
         filter: &MetadataFilter,
     ) -> Result<Vec<Similarity>> {
-        let results = self.index.search(query, top_k * 4);
-        let filtered: Vec<Similarity> = results
-            .into_iter()
-            .filter(|s| filter.matches(&s.document.metadata))
-            .take(top_k)
+        let metric = self.index.metric();
+        let mut similarities: Vec<Similarity> = self
+            .documents
+            .iter()
+            .filter(|entry| filter.matches(&entry.value().metadata))
+            .filter_map(|entry| {
+                let doc = entry.value();
+                doc.embedding.as_ref().map(|emb| Similarity {
+                    document: doc.clone(),
+                    score: metric.similarity(query, emb),
+                })
+            })
             .collect();
-        Ok(filtered)
+        similarities.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        similarities.truncate(top_k);
+        Ok(similarities)
     }
 
     async fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Result<Vec<Vec<Similarity>>> {
@@ -427,9 +436,11 @@ pub async fn load_all_documents<S: VectorStore>(store: &S) -> Result<Vec<Documen
 }
 
 /// [`InMemoryVectorStore`] that flushes JSON to disk after each mutating operation.
+/// For better performance, use [`open_lazy_flush`](Self::open_lazy_flush) and call [`flush`](Self::flush) manually.
 pub struct JsonPersistentVectorStore {
     path: std::path::PathBuf,
     inner: InMemoryVectorStore,
+    auto_flush: bool,
 }
 
 impl JsonPersistentVectorStore {
@@ -440,7 +451,7 @@ impl JsonPersistentVectorStore {
         } else {
             InMemoryVectorStore::new()
         };
-        Ok(Self { path, inner })
+        Ok(Self { path, inner, auto_flush: true })
     }
 
     pub async fn open_with_metric<P: AsRef<Path>>(path: P, metric: DistanceMetric) -> Result<Self> {
@@ -450,10 +461,21 @@ impl JsonPersistentVectorStore {
         } else {
             InMemoryVectorStore::with_metric(metric)
         };
-        Ok(Self { path, inner })
+        Ok(Self { path, inner, auto_flush: true })
     }
 
-    async fn flush(&self) -> Result<()> {
+    /// Open without auto-flushing. Call [`flush`](Self::flush) manually or on drop.
+    pub async fn open_lazy_flush<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let path = path.as_ref().to_path_buf();
+        let inner = if path.exists() {
+            InMemoryVectorStore::load_from_file(&path).await?
+        } else {
+            InMemoryVectorStore::new()
+        };
+        Ok(Self { path, inner, auto_flush: false })
+    }
+
+    pub async fn flush(&self) -> Result<()> {
         self.inner.save_to_file(&self.path).await
     }
 
@@ -465,12 +487,12 @@ impl JsonPersistentVectorStore {
 impl VectorStore for JsonPersistentVectorStore {
     async fn add(&self, document: Document) -> Result<()> {
         self.inner.add(document).await?;
-        self.flush().await
+        if self.auto_flush { self.flush().await } else { Ok(()) }
     }
 
     async fn add_batch(&self, documents: Vec<Document>) -> Result<()> {
         self.inner.add_batch(documents).await?;
-        self.flush().await
+        if self.auto_flush { self.flush().await } else { Ok(()) }
     }
 
     async fn search(&self, query: &[f32], top_k: usize) -> Result<Vec<Similarity>> {
@@ -496,7 +518,7 @@ impl VectorStore for JsonPersistentVectorStore {
 
     async fn delete(&self, id: &str) -> Result<bool> {
         let ok = self.inner.delete(id).await?;
-        if ok {
+        if ok && self.auto_flush {
             self.flush().await?;
         }
         Ok(ok)
@@ -504,7 +526,7 @@ impl VectorStore for JsonPersistentVectorStore {
 
     async fn delete_batch(&self, ids: Vec<String>) -> Result<usize> {
         let n = self.inner.delete_batch(ids).await?;
-        if n > 0 {
+        if n > 0 && self.auto_flush {
             self.flush().await?;
         }
         Ok(n)
@@ -512,7 +534,7 @@ impl VectorStore for JsonPersistentVectorStore {
 
     async fn clear(&self) -> Result<()> {
         self.inner.clear().await?;
-        self.flush().await
+        if self.auto_flush { self.flush().await } else { Ok(()) }
     }
 
     async fn list(&self, limit: usize, offset: usize) -> Result<Vec<Document>> {

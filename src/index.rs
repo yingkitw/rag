@@ -240,8 +240,7 @@ impl Index for FlatIndex {
     }
 
     fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Vec<Vec<Similarity>> {
-        // Parallel batch search using rayon-like approach via chunks
-        // For simplicity, we do concurrent searches
+        use std::sync::Arc as StdArc;
         use std::thread;
 
         let num_queries = queries.len();
@@ -257,16 +256,15 @@ impl Index for FlatIndex {
                 .collect();
         }
 
-        // Parallel batch search
+        // Collect all docs once and share via Arc across threads
+        let docs: StdArc<Vec<StdArc<Document>>> = StdArc::new(
+            self.documents.iter().map(|entry| entry.value().clone()).collect()
+        );
+        let metric = self.metric;
+
         let mut handles = Vec::with_capacity(num_queries);
         for query in queries.iter().cloned() {
-            // Clone self reference for the closure
-            let docs: Vec<Arc<Document>> = self
-                .documents
-                .iter()
-                .map(|entry| entry.value().clone())
-                .collect();
-            let metric = self.metric;
+            let docs = StdArc::clone(&docs);
             let handle = thread::spawn(move || {
                 let mut similarities: Vec<Similarity> = docs
                     .iter()

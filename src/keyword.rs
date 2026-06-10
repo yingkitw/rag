@@ -25,7 +25,7 @@ impl Bm25Config {
 
 /// Tokenize for keyword search: lowercase alphanumeric terms.
 pub fn tokenize(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
+    let mut out = Vec::with_capacity(text.len() / 4);
     let mut cur = String::new();
     for c in text.chars() {
         if c.is_alphanumeric() {
