@@ -23,6 +23,7 @@ The goal is a small, composable core that works as a library, a CLI, and an MCP 
 - Embeddings: OpenAI and/or local Ollama (see `OPENAI_API_KEY`, `OLLAMA_URL`, `OLLAMA_MODEL`). Optional **OpenAI-compatible HTTP** via [`HttpEmbeddingModel`](src/embeddings.rs).
 - Vector index: pluggable `Index` trait; default exact search via `FlatIndex`; approximate **IVF** via `IvfflatIndex` (`src/index_ivf.rs`).
 - Serialization: `serde` / `serde_json` (including **embeddings** on `Document` for JSON snapshots); MCP schemas via `schemars` where required for tools.
+- Feature flags: `http` (embedding HTTP clients), `hnsw` (approximate index), `ingest` (directory walking), `pdf` (PDF parsing), `mcp` (MCP server), `cli` (binaries), `sqlite` (SQLite `VectorStore` backend). All are enabled by default; downstream crates can opt out.
 
 ## Public surfaces
 

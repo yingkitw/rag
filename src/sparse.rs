@@ -46,13 +46,14 @@ impl SparseVector {
 }
 
 /// Index for sparse vectors.
+#[derive(Default)]
 pub struct SparseIndex {
     vectors: Vec<(String, SparseVector)>,
 }
 
 impl SparseIndex {
     pub fn new() -> Self {
-        Self { vectors: Vec::new() }
+        Self::default()
     }
 
     pub fn add(&mut self, id: String, vector: SparseVector) {

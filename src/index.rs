@@ -263,6 +263,7 @@ impl Index for FlatIndex {
         let metric = self.metric;
 
         let mut handles = Vec::with_capacity(num_queries);
+        #[allow(clippy::unnecessary_to_owned)]
         for query in queries.iter().cloned() {
             let docs = StdArc::clone(&docs);
             let handle = thread::spawn(move || {

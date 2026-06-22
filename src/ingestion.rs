@@ -66,14 +66,14 @@ impl Source for PdfSource {
         let pages = doc.get_pages();
 
         for (page_num, page_id) in pages {
-            if let Ok(lopdf::Object::Dictionary(page)) = doc.get_object(page_id) {
-                if let Ok(text) = extract_text_from_page(&doc, page) {
-                    if !content.is_empty() {
-                        content.push('\n');
-                    }
-                    content.push_str(&format!("--- Page {} ---\n", page_num));
-                    content.push_str(&text);
+            if let Ok(lopdf::Object::Dictionary(page)) = doc.get_object(page_id)
+                && let Ok(text) = extract_text_from_page(&doc, page)
+            {
+                if !content.is_empty() {
+                    content.push('\n');
                 }
+                content.push_str(&format!("--- Page {} ---\n", page_num));
+                content.push_str(&text);
             }
         }
 
@@ -134,10 +134,10 @@ fn extract_text_from_content(data: &[u8]) -> String {
         if i + 2 < data.len() && &data[i..i + 2] == b"Tj" {
             // Tj operator: preceding string on stack
             // Walk backward to find the string
-            if let Some((start, end)) = find_preceding_string(data, i) {
-                if let Ok(s) = decode_pdf_string(&data[start..end]) {
-                    text.push_str(&s);
-                }
+            if let Some((start, end)) = find_preceding_string(data, i)
+                && let Ok(s) = decode_pdf_string(&data[start..end])
+            {
+                text.push_str(&s);
             }
             i += 2;
         } else if i + 2 < data.len() && &data[i..i + 2] == b"TJ" {
@@ -180,9 +180,7 @@ fn find_preceding_string(data: &[u8], pos: usize) -> Option<(usize, usize)> {
             }
             b'\\' if start + 1 < data.len() => {
                 // escaped char, skip next
-                if start > 0 {
-                    start -= 1;
-                }
+                start = start.saturating_sub(1);
             }
             _ => {}
         }
@@ -230,14 +228,13 @@ fn extract_strings_from_array(data: &[u8]) -> String {
     let mut result = String::new();
     let mut i = 0;
     while i < data.len() {
-        if data[i] == b'(' {
-            if let Some(end) = find_matching_paren(data, i) {
-                if let Ok(s) = decode_pdf_string(&data[i + 1..end]) {
-                    result.push_str(&s);
-                }
-                i = end + 1;
-                continue;
-            }
+        if data[i] == b'('
+            && let Some(end) = find_matching_paren(data, i)
+            && let Ok(s) = decode_pdf_string(&data[i + 1..end])
+        {
+            result.push_str(&s);
+            i = end + 1;
+            continue;
         }
         i += 1;
     }
@@ -292,10 +289,10 @@ fn decode_pdf_string(data: &[u8]) -> Result<String> {
                             break;
                         }
                     }
-                    if let Ok(val) = u32::from_str_radix(&octal, 8) {
-                        if let Some(c) = char::from_u32(val) {
-                            result.push(c);
-                        }
+                    if let Ok(val) = u32::from_str_radix(&octal, 8)
+                        && let Some(c) = char::from_u32(val)
+                    {
+                        result.push(c);
                     }
                     i += octal.len().saturating_sub(1);
                 }
@@ -376,7 +373,7 @@ impl Source for CodebaseSource {
             // Skip hidden files (names starting with dot)
             if path.file_name()
                 .and_then(|n| n.to_str())
-                .map_or(false, |n| n.starts_with('.'))
+                .is_some_and(|n| n.starts_with('.'))
             {
                 continue;
             }

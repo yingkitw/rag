@@ -213,12 +213,12 @@ impl GraphStore {
 
         self.out_edges
             .entry(source)
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(id.clone());
 
         self.in_edges
             .entry(target)
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(id);
 
         Ok(())
@@ -276,24 +276,22 @@ impl GraphStore {
 
         if let Some(edge_ids) = self.out_edges.get(node_id) {
             for eid in edge_ids.value().iter() {
-                if let Some(edge) = self.edges.get(eid) {
-                    if seen.insert(edge.target.clone()) {
-                        if let Some(node) = self.nodes.get(&edge.target) {
-                            result.push(node.value().clone());
-                        }
-                    }
+                if let Some(edge) = self.edges.get(eid)
+                    && seen.insert(edge.target.clone())
+                    && let Some(node) = self.nodes.get(&edge.target)
+                {
+                    result.push(node.value().clone());
                 }
             }
         }
 
         if let Some(edge_ids) = self.in_edges.get(node_id) {
             for eid in edge_ids.value().iter() {
-                if let Some(edge) = self.edges.get(eid) {
-                    if seen.insert(edge.source.clone()) {
-                        if let Some(node) = self.nodes.get(&edge.source) {
-                            result.push(node.value().clone());
-                        }
-                    }
+                if let Some(edge) = self.edges.get(eid)
+                    && seen.insert(edge.source.clone())
+                    && let Some(node) = self.nodes.get(&edge.source)
+                {
+                    result.push(node.value().clone());
                 }
             }
         }
@@ -307,12 +305,11 @@ impl GraphStore {
 
         if let Some(edge_ids) = self.out_edges.get(node_id) {
             for eid in edge_ids.value().iter() {
-                if let Some(edge) = self.edges.get(eid) {
-                    if seen.insert(edge.target.clone()) {
-                        if let Some(node) = self.nodes.get(&edge.target) {
-                            result.push(node.value().clone());
-                        }
-                    }
+                if let Some(edge) = self.edges.get(eid)
+                    && seen.insert(edge.target.clone())
+                    && let Some(node) = self.nodes.get(&edge.target)
+                {
+                    result.push(node.value().clone());
                 }
             }
         }
@@ -326,12 +323,11 @@ impl GraphStore {
 
         if let Some(edge_ids) = self.in_edges.get(node_id) {
             for eid in edge_ids.value().iter() {
-                if let Some(edge) = self.edges.get(eid) {
-                    if seen.insert(edge.source.clone()) {
-                        if let Some(node) = self.nodes.get(&edge.source) {
-                            result.push(node.value().clone());
-                        }
-                    }
+                if let Some(edge) = self.edges.get(eid)
+                    && seen.insert(edge.source.clone())
+                    && let Some(node) = self.nodes.get(&edge.source)
+                {
+                    result.push(node.value().clone());
                 }
             }
         }
@@ -358,10 +354,10 @@ impl GraphStore {
 
         if let Some(edge_ids) = self.out_edges.get(source) {
             for eid in edge_ids.value().iter() {
-                if let Some(edge) = self.edges.get(eid) {
-                    if edge.target == target {
-                        result.push(edge.value().clone());
-                    }
+                if let Some(edge) = self.edges.get(eid)
+                    && edge.target == target
+                {
+                    result.push(edge.value().clone());
                 }
             }
         }
@@ -394,10 +390,10 @@ impl GraphStore {
         queue.push_back((start_id.to_string(), 0usize));
 
         while let Some((node_id, depth)) = queue.pop_front() {
-            if depth > 0 {
-                if let Some(node) = self.nodes.get(&node_id) {
-                    result.push(node.value().clone());
-                }
+            if depth > 0
+                && let Some(node) = self.nodes.get(&node_id)
+            {
+                result.push(node.value().clone());
             }
 
             if depth < max_depth {
@@ -492,36 +488,36 @@ impl GraphStore {
 
             if let Some(edge_ids) = self.out_edges.get(&current) {
                 for eid in edge_ids.value().iter() {
-                    if let Some(edge) = self.edges.get(eid) {
-                        if !visited.contains_key(&edge.target) {
-                            visited.insert(
-                                edge.target.clone(),
-                                (
-                                    Some(current.clone()),
-                                    Some(eid.clone()),
-                                    edge.weight,
-                                ),
-                            );
-                            queue.push_back(edge.target.clone());
-                        }
+                    if let Some(edge) = self.edges.get(eid)
+                        && !visited.contains_key(&edge.target)
+                    {
+                        visited.insert(
+                            edge.target.clone(),
+                            (
+                                Some(current.clone()),
+                                Some(eid.clone()),
+                                edge.weight,
+                            ),
+                        );
+                        queue.push_back(edge.target.clone());
                     }
                 }
             }
 
             if let Some(edge_ids) = self.in_edges.get(&current) {
                 for eid in edge_ids.value().iter() {
-                    if let Some(edge) = self.edges.get(eid) {
-                        if !visited.contains_key(&edge.source) {
-                            visited.insert(
-                                edge.source.clone(),
-                                (
-                                    Some(current.clone()),
-                                    Some(eid.clone()),
-                                    edge.weight,
-                                ),
-                            );
-                            queue.push_back(edge.source.clone());
-                        }
+                    if let Some(edge) = self.edges.get(eid)
+                        && !visited.contains_key(&edge.source)
+                    {
+                        visited.insert(
+                            edge.source.clone(),
+                            (
+                                Some(current.clone()),
+                                Some(eid.clone()),
+                                edge.weight,
+                            ),
+                        );
+                        queue.push_back(edge.source.clone());
                     }
                 }
             }
@@ -568,11 +564,10 @@ impl GraphStore {
                     .into_iter()
                     .max_by_key(|(_, count)| *count)
                     .map(|(label, _)| label)
+                    && labels.get(node_id) != Some(&best_label)
                 {
-                    if labels.get(node_id) != Some(&best_label) {
-                        labels.insert(node_id.clone(), best_label);
-                        changed = true;
-                    }
+                    labels.insert(node_id.clone(), best_label);
+                    changed = true;
                 }
             }
 
@@ -585,7 +580,7 @@ impl GraphStore {
         for (node_id, label) in &labels {
             community_map
                 .entry(*label)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(node_id.clone());
         }
 
@@ -666,12 +661,12 @@ impl GraphStore {
             store
                 .out_edges
                 .entry(source)
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(id.clone());
             store
                 .in_edges
                 .entry(target)
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(id.clone());
             store.edges.insert(id, edge);
         }

@@ -122,14 +122,13 @@ fn collect_input_paths(files: &[PathBuf]) -> Vec<PathBuf> {
             if let Ok(entries) = std::fs::read_dir(path) {
                 for entry in entries.flatten() {
                     let p = entry.path();
-                    if p.is_file() {
-                        if let Some(ext) = p.extension() {
+                    if p.is_file()
+                        && let Some(ext) = p.extension() {
                             let ext = ext.to_string_lossy().to_lowercase();
                             if ext == "txt" || ext == "md" {
                                 result.push(p);
                             }
                         }
-                    }
                 }
             }
         } else if path.is_file() {

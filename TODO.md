@@ -29,6 +29,7 @@
 ## Optional / research
 
 - [ ] PostgreSQL / Qdrant / remote vector backends implementing `VectorStore`.
+- [x] SQLite `VectorStore` backend (`SqliteVectorStore`) via `rusqlite` behind `sqlite` feature.
 - [x] Full HNSW (`hnsw_rs` crate) implementing `Index`; IVF is a first ANN step.
 - [x] LLM-assisted `EntityExtractor` behind a feature flag (`llm-extractor`).
 - [x] Sparse vector index and search (e.g., SPLADE-style lexical semantic signals).
@@ -39,6 +40,24 @@
 - [x] Metadata aggregation / group-by (count/sum per attribute, e.g., hits per source).
 - [x] Contextual retrieval: rewrite chunks with surrounding context before embedding.
 
+## Brainstorming (competitive intelligence)
+
+Comparable Rust RAG libraries: `rag-toolchain`, `foxstash`, `trueno-rag`, `fastembed-rs`.
+
+High-value gaps to consider:
+
+- [ ] **Local ONNX embeddings** via `fastembed` or `ort` — eliminates network dependency; competitors have this as primary path.
+- [x] **SQLite persistent backend** — `SqliteVectorStore` via `rusqlite`.
+- [ ] **PostgreSQL / Qdrant remote backends** — `VectorStore` implementations beyond JSON file.
+- [ ] **Local cross-encoder reranker** (ONNX-based, e.g. `bge-reranker`) — currently only external HTTP rerankers.
+- [ ] **Vector quantization** (Int8 at minimum) — foxstash reports 4x memory reduction.
+- [ ] **Compression for persistence** — LZ4 or zstd for `vectors.json` / `graph.json`.
+- [ ] **Write-ahead log (WAL)** for incremental updates without full file rewrites.
+- [ ] **Recursive / semantic / structural chunking** — beyond fixed/paragraph/sentence.
+- [ ] **Evaluation metrics** — Recall@k, Precision@k, MRR, NDCG for benchmarking retrieval quality.
+- [ ] **Image embeddings** (CLIP-style) — fastembed-rs supports Qdrant CLIP models.
+- [ ] **SIMD-accelerated distance computation** — foxstash/trueno report 3-4x speedup on AVX2/SSE/NEON.
+
 ## Maintenance
 
-- [ ] Keep [SPEC.md](SPEC.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [README.md](README.md) aligned when behavior changes.
+- [x] Keep [SPEC.md](SPEC.md), [ARCHITECTURE.md](ARCHITECTURE.md), and [README.md](README.md) aligned when behavior changes.

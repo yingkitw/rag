@@ -10,6 +10,7 @@ Project docs: [SPEC.md](SPEC.md) (scope and requirements), [ARCHITECTURE.md](ARC
 - Vector RAG: multiple embedding backends (OpenAI, Ollama), pluggable indexes and distance metrics (cosine, Euclidean, dot product, Manhattan)
 - Graph RAG: graph store for nodes and edges, entity extraction hooks, and a `GraphRagEngine` that ties documents, vectors, and the graph together
 - In-memory vector stores with parallel batch search (`InMemoryVectorStore`, `MinimalVectorDB`)
+- SQLite persistent vector store (`SqliteVectorStore`, optional `sqlite` feature)
 - Search-oriented retrieval: configurable top-k, score-ranked results, and metadata filtering over stored chunks
 - Ingestion helpers: `Source` implementations for PDF, codebase trees, and wiki-style URLs (`ingestion` module)
 - Multiple text chunking strategies (fixed-size, paragraph, sentence)
@@ -32,6 +33,30 @@ Add to your `Cargo.toml`:
 ```toml
 [dependencies]
 rag = { git = "https://github.com/yingkitw/rag" }
+```
+
+## Feature Flags
+
+`rag` lets you opt out of heavy dependencies you don't need. The default set is generous for typical use; downstream projects can trim it.
+
+| Feature | Enables | Default? |
+|---|---|---|
+| `http` | `reqwest`-based embedding models (OpenAI, Ollama, `HttpEmbeddingModel`), external rerankers, query rewriting, contextual retrieval, `WikiSource` | **yes** |
+| `hnsw` | `HnswIndex` approximate index via `hnsw_rs` | **yes** |
+| `ingest` | `CodebaseSource` directory-tree ingestion via `walkdir` | **yes** |
+| `pdf` | `PdfSource` PDF ingestion via `lopdf` | **yes** |
+| `mcp` | `RagMcpServer`, `rag-mcp` binary, `schemars` schemas | **yes** |
+| `cli` | `rag` CLI binary, `clap`, `tracing-subscriber` | **yes** |
+| `sqlite` | `SqliteVectorStore` persistent backend | no |
+| `openai` | Convenience alias for `http` | **yes** |
+| `ollama` | Convenience alias for `http` | **yes** |
+| `llm-extractor` | `LlmEntityExtractor` (needs `http`) | no |
+
+Minimal library usage (no HTTP, no CLI, no PDF, no MCP):
+
+```toml
+[dependencies]
+rag = { git = "https://github.com/yingkitw/rag", default-features = false, features = ["hnsw"] }
 ```
 
 ## Quick Start
@@ -99,25 +124,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create embedding model and vector store
     let embedding_model = OpenAIEmbeddingModel::new("your-api-key".to_string());
     let vector_store = MinimalVectorDB::new();
-    
+
     // Create retriever
     let retriever = Retriever::new(embedding_model, vector_store)
         .with_chunker(Box::new(FixedSizeChunker::new(500, 50)))
         .with_top_k(5);
-    
+
     // Add documents
     retriever.add_document("Your document content here".to_string()).await?;
-    
+
     // Retrieve relevant chunks
     let results = retriever.retrieve("Your query here").await?;
-    
+
     for (i, content) in results.iter().enumerate() {
         println!("{}. {}", i + 1, content);
     }
-    
+
     Ok(())
 }
 ```
+
+If you disabled the `http` feature, provide your own `EmbeddingModel` implementation (e.g., a local ONNX model or a custom HTTP client).
 
 ## Examples
 
@@ -225,6 +252,7 @@ let model = OllamaEmbeddingModel::new("nomic-embed-text".to_string())
 
 - `EmbeddingModel`: Trait for embedding models
 - `VectorStore`: Trait for vector storage backends
+- `SqliteVectorStore`: SQLite-backed `VectorStore` (requires `sqlite` feature)
 - `Retriever`: Main interface for vector-centric RAG operations
 - `GraphStore`, `GraphNode`, `GraphEdge`: Graph storage and structure for graph-augmented retrieval
 - `GraphRagEngine`, `EntityExtractor`: Orchestration and entity linking for graph RAG

@@ -22,9 +22,9 @@ The vector-centric entry point is `Retriever`. The combined vector + graph path 
 
 **Implementations:**
 
-- `OpenAIEmbeddingModel`
-- `OllamaEmbeddingModel`
-- **`HttpEmbeddingModel`** — OpenAI-compatible embedding HTTP API.
+- `OpenAIEmbeddingModel` (requires `http` feature)
+- `OllamaEmbeddingModel` (requires `http` feature)
+- **`HttpEmbeddingModel`** — OpenAI-compatible embedding HTTP API (requires `http` feature).
 
 ### 2. Vector store (`src/vector_store.rs`)
 
@@ -89,9 +89,9 @@ The vector-centric entry point is `Retriever`. The combined vector + graph path 
 
 **Trait:** `Source::extract`.
 
-**Sources:** `PdfSource`, `CodebaseSource`, `WikiSource`, and related helpers.
+**Sources:** `PdfSource` (requires `pdf`), `CodebaseSource` (requires `ingest`), `WikiSource` (requires `http`), and related helpers.
 
-### 9. MCP (`src/mcp.rs`, binary `src/mcp_server.rs`)
+### 9. MCP (`src/mcp.rs`, binary `src/mcp_server.rs`) — requires `mcp` feature
 
 **Purpose:** Expose RAG operations over Model Context Protocol (stdio transport, `rmcp`).
 
@@ -121,9 +121,10 @@ The vector-centric entry point is `Retriever`. The combined vector + graph path 
 | `src/rerank.rs` | `SimilarityReranker` trait and `PassthroughReranker`. |
 | `src/index_ivf.rs` | `IvfflatIndex` — IVF-style approximate search implementing `Index`. |
 | `JsonPersistentVectorStore` | `VectorStore` that rewrites `vectors.json` after mutations. |
+| `SqliteVectorStore` | SQLite-backed `VectorStore` (requires `sqlite` feature). |
 | `GraphPersisted` | Serializable graph (`nodes` + `edges`). |
 | `GraphRagSnapshot` | Documents + graph + entity/chunk side maps + engine hyperparameters. |
-| `HttpEmbeddingModel` | Configurable OpenAI-compatible `/embeddings` client. |
+| `HttpEmbeddingModel` | Configurable OpenAI-compatible `/embeddings` client (requires `http`). |
 
 ### 11. Errors (`src/errors.rs`)
 
@@ -237,7 +238,7 @@ Implement `EntityExtractor` to feed `GraphRagEngine` with NER or model-based ent
 
 ## Performance
 
-- `FlatIndex` is O(n) per query; `IvfflatIndex` probes a subset of centroid buckets first (exact within probed buckets). For very large n consider external HNSW (see [TODO.md](TODO.md)).
+- `FlatIndex` is O(n) per query; `IvfflatIndex` probes a subset of centroid buckets first (exact within probed buckets). `HnswIndex` (requires `hnsw` feature) via `hnsw_rs` provides approximate search for very large n.
 - Prefer batch embedding where the model allows.
 - Normalize vectors when using dot-product metric for stability.
 

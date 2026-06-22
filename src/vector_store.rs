@@ -410,9 +410,9 @@ impl VectorStore for MinimalVectorDB {
         let docs = self.documents.read().unwrap();
         Ok(docs
             .values()
-            .cloned()
             .skip(offset)
             .take(limit)
+            .cloned()
             .collect())
     }
 

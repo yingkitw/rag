@@ -361,12 +361,12 @@ impl RagMcpServer {
             for name in &entity_names {
                 self.entity_chunks
                     .entry(name.clone())
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert(id.clone());
 
                 self.chunk_entities
                     .entry(id.clone())
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert(name.clone());
             }
 
@@ -464,22 +464,22 @@ impl RagMcpServer {
         }
 
         for chunk_id in &graph_chunk_ids {
-            if seen_ids.insert((*chunk_id).clone()) {
-                if let Ok(Some(doc)) = self.store.get(chunk_id).await {
-                    let entities = self
-                        .chunk_entities
-                        .get(chunk_id)
-                        .map(|e| e.value().iter().cloned().collect::<Vec<String>>())
-                        .unwrap_or_default();
+            if seen_ids.insert((*chunk_id).clone())
+                && let Ok(Some(doc)) = self.store.get(chunk_id).await
+            {
+                let entities = self
+                    .chunk_entities
+                    .get(chunk_id)
+                    .map(|e| e.value().iter().cloned().collect::<Vec<String>>())
+                    .unwrap_or_default();
 
-                    results.push(json!({
-                        "rank": results.len() + 1,
-                        "content": doc.content,
-                        "score": "0.0000",
-                        "source": "graph",
-                        "entities": entities,
-                    }));
-                }
+                results.push(json!({
+                    "rank": results.len() + 1,
+                    "content": doc.content,
+                    "score": "0.0000",
+                    "source": "graph",
+                    "entities": entities,
+                }));
             }
         }
 

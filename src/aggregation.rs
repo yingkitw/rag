@@ -27,10 +27,10 @@ pub fn group_by<'a>(documents: &'a [Document], key: &str) -> HashMap<String, Vec
 pub fn sum_by(documents: &[Document], group_key: &str, sum_key: &str) -> HashMap<String, f64> {
     let mut out = HashMap::new();
     for doc in documents {
-        if let (Some(gv), Some(sv)) = (doc.metadata.get(group_key), doc.metadata.get(sum_key)) {
-            if let Ok(val) = sv.parse::<f64>() {
-                *out.entry(gv.clone()).or_insert(0.0) += val;
-            }
+        if let (Some(gv), Some(sv)) = (doc.metadata.get(group_key), doc.metadata.get(sum_key))
+            && let Ok(val) = sv.parse::<f64>()
+        {
+            *out.entry(gv.clone()).or_insert(0.0) += val;
         }
     }
     out

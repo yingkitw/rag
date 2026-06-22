@@ -228,14 +228,10 @@ impl Index for IvfflatIndex {
                 if !filter(doc) {
                     return None;
                 }
-                if let Some(embedding) = &doc.embedding {
-                    Some(Similarity {
-                        document: (**doc).clone(),
-                        score: self.metric.similarity(query, embedding),
-                    })
-                } else {
-                    None
-                }
+                doc.embedding.as_ref().map(|embedding| Similarity {
+                    document: (**doc).clone(),
+                    score: self.metric.similarity(query, embedding),
+                })
             })
             .collect();
         similarities.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));

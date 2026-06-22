@@ -90,7 +90,7 @@ impl EmbeddingModel for OpenAIEmbeddingModel {
 
         let response = self
             .client
-            .post(&format!("{}/embeddings", self.base_url))
+            .post(format!("{}/embeddings", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&request)
             .send()
@@ -158,7 +158,7 @@ impl EmbeddingModel for OllamaEmbeddingModel {
 
             let response = self
                 .client
-                .post(&format!("{}/api/embeddings", self.base_url))
+                .post(format!("{}/api/embeddings", self.base_url))
                 .json(&request)
                 .send()
                 .await?;

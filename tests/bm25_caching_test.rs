@@ -1,7 +1,7 @@
 use rag::{
     embeddings::EmbeddingModel,
     retriever::Retriever,
-    vector_store::{Document, InMemoryVectorStore, VectorStore},
+    vector_store::InMemoryVectorStore,
 };
 use async_trait::async_trait;
 

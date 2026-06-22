@@ -21,6 +21,8 @@ pub mod chunker;
 pub mod errors;
 #[cfg(feature = "mcp")]
 pub mod mcp;
+#[cfg(feature = "sqlite")]
+pub mod store_sqlite;
 pub mod index;
 #[cfg(feature = "hnsw")]
 pub mod index_hnsw;
@@ -44,6 +46,8 @@ pub use index::{DistanceMetric, FlatIndex, Index};
 #[cfg(feature = "hnsw")]
 pub use index_hnsw::HnswIndex;
 pub use index_ivf::IvfflatIndex;
+#[cfg(feature = "sqlite")]
+pub use store_sqlite::SqliteVectorStore;
 pub use ingestion::{Source, ExtractedDocument};
 #[cfg(feature = "pdf")]
 pub use ingestion::PdfSource;

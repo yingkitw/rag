@@ -252,7 +252,7 @@ fn extract_acronyms(text: &str) -> Vec<String> {
 
 fn extract_proper_nouns(text: &str) -> Vec<String> {
     let mut results = Vec::new();
-    let sentences: Vec<&str> = text.split(|c| c == '.' || c == '!' || c == '?' || c == '\n').collect();
+    let sentences: Vec<&str> = text.split(['.', '!', '?', '\n']).collect();
 
     let sentence_starters = [
         "the", "a", "an", "this", "that", "it", "there", "here", "when", "where",
@@ -301,14 +301,14 @@ fn extract_proper_nouns(text: &str) -> Vec<String> {
                     current_seq.push(cleaned);
                 }
             } else {
-                if current_seq.len() >= 1 {
+                if !current_seq.is_empty() {
                     results.push(current_seq.join(" "));
                 }
                 current_seq.clear();
             }
         }
 
-        if current_seq.len() >= 1 {
+        if !current_seq.is_empty() {
             results.push(current_seq.join(" "));
         }
     }
@@ -413,12 +413,12 @@ where
 
                 self.entity_chunks
                     .entry(node.name.clone())
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert(doc_id.clone());
 
                 self.chunk_entities
                     .entry(doc_id.clone())
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert(node.name.clone());
             }
 
@@ -541,21 +541,21 @@ where
         }
 
         for chunk_id in graph_chunk_ids {
-            if seen_ids.insert(chunk_id.clone()) {
-                if let Some(doc) = self.vector_store.get(&chunk_id).await? {
-                    let entities = self
-                        .chunk_entities
-                        .get(&chunk_id)
-                        .map(|e| e.value().iter().cloned().collect::<Vec<_>>())
-                        .unwrap_or_default();
+            if seen_ids.insert(chunk_id.clone())
+                && let Some(doc) = self.vector_store.get(&chunk_id).await?
+            {
+                let entities = self
+                    .chunk_entities
+                    .get(&chunk_id)
+                    .map(|e| e.value().iter().cloned().collect::<Vec<_>>())
+                    .unwrap_or_default();
 
-                    results.push(GraphRagResult {
-                        content: doc.content,
-                        score: 0.0,
-                        source: "graph".to_string(),
-                        entities,
-                    });
-                }
+                results.push(GraphRagResult {
+                    content: doc.content,
+                    score: 0.0,
+                    source: "graph".to_string(),
+                    entities,
+                });
             }
         }
 
@@ -579,7 +579,7 @@ where
         let neighbor_names: Vec<String> = neighbors.iter().map(|n| n.name.clone()).collect();
         let chunks = self
             .entity_chunks
-            .get(&*name)
+            .get(name)
             .map(|e| e.value().len())
             .unwrap_or(0);
 
