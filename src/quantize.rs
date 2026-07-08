@@ -58,12 +58,12 @@ impl QuantizationParams {
     /// Quantize a single f32 vector into Int8 codes.
     pub fn quantize(&self, vector: &[f32]) -> Vec<i8> {
         let mut out = vec![0i8; self.dim];
-        for i in 0..self.dim {
+        for (i, slot) in out.iter_mut().enumerate() {
             let v = vector.get(i).copied().unwrap_or(self.min[i]);
             let range = self.max[i] - self.min[i];
             // Map [min, max] -> [-128, 127]
             let normalized = ((v - self.min[i]) / range).clamp(0.0, 1.0);
-            out[i] = (normalized * 255.0 - 128.0).round() as i8;
+            *slot = (normalized * 255.0 - 128.0).round() as i8;
         }
         out
     }
@@ -71,10 +71,10 @@ impl QuantizationParams {
     /// Dequantize an Int8 code back to an approximate f32 vector.
     pub fn dequantize(&self, codes: &[i8]) -> Vec<f32> {
         let mut out = vec![0.0_f32; self.dim];
-        for i in 0..self.dim {
+        for (i, slot) in out.iter_mut().enumerate() {
             let c = codes.get(i).copied().unwrap_or(0) as f32;
             let range = self.max[i] - self.min[i];
-            out[i] = self.min[i] + ((c + 128.0) / 255.0) * range;
+            *slot = self.min[i] + ((c + 128.0) / 255.0) * range;
         }
         out
     }

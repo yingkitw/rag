@@ -16,12 +16,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_chunker(Box::new(FixedSizeChunker::new(200, 30)))
         .with_top_k(3);
 
-    let documents = vec![
-        "Rust is a systems programming language that runs blazingly fast, prevents segfaults, and guarantees thread safety.",
+    let documents = ["Rust is a systems programming language that runs blazingly fast, prevents segfaults, and guarantees thread safety.",
         "Retrieval-Augmented Generation (RAG) is a technique that enhances large language models by providing them with relevant external context.",
         "The vector database stores embeddings which are numerical representations of text that capture semantic meaning.",
-        "Cosine similarity is commonly used to measure the similarity between two vectors in RAG systems.",
-    ];
+        "Cosine similarity is commonly used to measure the similarity between two vectors in RAG systems."];
 
     println!("Adding documents to the minimal vector database...");
     for (i, doc) in documents.iter().enumerate() {

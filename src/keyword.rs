@@ -50,6 +50,8 @@ pub struct Bm25Index {
     config: Bm25Config,
     /// doc_id -> raw content for phrase search
     content: HashMap<String, String>,
+    /// term -> doc_ids containing the term; speeds up search by skipping non-matching docs
+    postings: HashMap<String, Vec<String>>,
 }
 
 impl Bm25Index {
@@ -67,6 +69,7 @@ impl Bm25Index {
                 avgdl: 1.0,
                 config,
                 content: HashMap::new(),
+                postings: HashMap::new(),
             });
         }
         let mut tf = HashMap::new();
@@ -97,6 +100,13 @@ impl Bm25Index {
         let n = docs.len();
         let avgdl = total_len as f32 / n as f32;
 
+        let mut postings: HashMap<String, Vec<String>> = HashMap::new();
+        for (doc_id, freqs) in &tf {
+            for term in freqs.keys() {
+                postings.entry(term.clone()).or_default().push(doc_id.clone());
+            }
+        }
+
         Ok(Self {
             tf,
             df,
@@ -105,6 +115,7 @@ impl Bm25Index {
             avgdl,
             config,
             content,
+            postings,
         })
     }
 
@@ -146,9 +157,17 @@ impl Bm25Index {
             return Vec::new();
         }
 
-        let mut scored: Vec<(String, f32)> = self
-            .tf
-            .keys()
+        let mut candidates: std::collections::HashSet<&String> = std::collections::HashSet::new();
+        for t in &terms {
+            if let Some(ids) = self.postings.get(t) {
+                for id in ids {
+                    candidates.insert(id);
+                }
+            }
+        }
+
+        let mut scored: Vec<(String, f32)> = candidates
+            .into_iter()
             .map(|id| {
                 let sc = self.score_doc(id, &terms);
                 (id.clone(), sc)

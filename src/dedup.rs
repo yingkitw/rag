@@ -11,22 +11,24 @@ fn word_set(text: &str) -> HashSet<String> {
         .collect()
 }
 
-/// Jaccard similarity between token bags (words).
-pub fn content_jaccard(a: &str, b: &str) -> f32 {
-    let sa = word_set(a);
-    let sb = word_set(b);
-    if sa.is_empty() && sb.is_empty() {
+fn jaccard_from_sets(a: &HashSet<String>, b: &HashSet<String>) -> f32 {
+    if a.is_empty() && b.is_empty() {
         return 1.0;
     }
-    if sa.is_empty() || sb.is_empty() {
+    if a.is_empty() || b.is_empty() {
         return 0.0;
     }
-    let inter = sa.intersection(&sb).count() as f32;
-    let union = sa.union(&sb).count() as f32;
+    let inter = a.intersection(b).count() as f32;
+    let union = a.union(b).count() as f32;
     if union <= 0.0 {
         return 0.0;
     }
     inter / union
+}
+
+/// Jaccard similarity between token bags (words).
+pub fn content_jaccard(a: &str, b: &str) -> f32 {
+    jaccard_from_sets(&word_set(a), &word_set(b))
 }
 
 /// Keep first occurrence; drop later items whose content is too similar to an already kept item.
@@ -34,16 +36,17 @@ pub fn dedup_similarities(items: Vec<Similarity>, min_jaccard: f32) -> Vec<Simil
     if !(0.0..=1.0).contains(&min_jaccard) {
         return items;
     }
-    let mut kept: Vec<Similarity> = Vec::new();
+    let mut kept: Vec<(Similarity, HashSet<String>)> = Vec::new();
     for s in items {
+        let words = word_set(&s.document.content);
         let dup = kept
             .iter()
-            .any(|k| content_jaccard(&k.document.content, &s.document.content) >= min_jaccard);
+            .any(|(_, kwords)| jaccard_from_sets(kwords, &words) >= min_jaccard);
         if !dup {
-            kept.push(s);
+            kept.push((s, words));
         }
     }
-    kept
+    kept.into_iter().map(|(s, _)| s).collect()
 }
 
 #[cfg(test)]

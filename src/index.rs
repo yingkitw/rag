@@ -1,4 +1,6 @@
 use crate::vector_store::{Document, Similarity};
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 use std::sync::Arc;
 
 /// Supported distance metrics for vector similarity search.
@@ -22,20 +24,24 @@ pub enum DistanceMetric {
 impl DistanceMetric {
     /// Compute similarity between two vectors using this metric.
     /// Higher value always means more similar (consistent across all metrics).
+    /// Dispatches to SIMD-accelerated kernels when available.
     pub fn similarity(&self, a: &[f32], b: &[f32]) -> f32 {
+        if a.len() != b.len() {
+            return 0.0;
+        }
         match self {
-            DistanceMetric::Cosine => cosine_similarity(a, b),
+            DistanceMetric::Cosine => crate::simd::cosine_similarity(a, b),
             DistanceMetric::Euclidean => {
-                let dist = euclidean_distance(a, b);
+                let dist = crate::simd::euclidean_distance(a, b);
                 if dist == 0.0 {
                     1.0
                 } else {
                     1.0 / (1.0 + dist)
                 }
             }
-            DistanceMetric::DotProduct => dot_product(a, b),
+            DistanceMetric::DotProduct => crate::simd::dot_product(a, b),
             DistanceMetric::Manhattan => {
-                let dist = manhattan_distance(a, b);
+                let dist = crate::simd::manhattan_distance(a, b);
                 if dist == 0.0 {
                     1.0
                 } else {
@@ -53,35 +59,6 @@ impl DistanceMetric {
             DistanceMetric::Manhattan => "manhattan",
         }
     }
-}
-
-fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    if a.len() != b.len() {
-        return 0.0;
-    }
-    let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-    let norm_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let norm_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if norm_a == 0.0 || norm_b == 0.0 {
-        return 0.0;
-    }
-    dot / (norm_a * norm_b)
-}
-
-fn euclidean_distance(a: &[f32], b: &[f32]) -> f32 {
-    a.iter()
-        .zip(b.iter())
-        .map(|(x, y)| (x - y) * (x - y))
-        .sum::<f32>()
-        .sqrt()
-}
-
-fn dot_product(a: &[f32], b: &[f32]) -> f32 {
-    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
-}
-
-fn manhattan_distance(a: &[f32], b: &[f32]) -> f32 {
-    a.iter().zip(b.iter()).map(|(x, y)| (x - y).abs()).sum()
 }
 
 /// Trait for vector search indexes.
@@ -184,27 +161,7 @@ impl Index for FlatIndex {
     }
 
     fn search(&self, query: &[f32], top_k: usize) -> Vec<Similarity> {
-        let metric = self.metric;
-        let mut similarities: Vec<Similarity> = self
-            .documents
-            .iter()
-            .filter_map(|entry| {
-                let doc = entry.value();
-                if let Some(embedding) = &doc.embedding {
-                    let score = metric.similarity(query, embedding);
-                    Some(Similarity {
-                        document: (**doc).clone(),
-                        score,
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        similarities.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-        similarities.truncate(top_k);
-        similarities
+        flat_search_top_k(&self.documents, query, self.metric, top_k, &|_| true)
     }
 
     fn search_exact_filtered(
@@ -213,30 +170,7 @@ impl Index for FlatIndex {
         top_k: usize,
         filter: &dyn Fn(&Document) -> bool,
     ) -> Vec<Similarity> {
-        let metric = self.metric;
-        let mut similarities: Vec<Similarity> = self
-            .documents
-            .iter()
-            .filter_map(|entry| {
-                let doc = entry.value();
-                if !filter(doc) {
-                    return None;
-                }
-                if let Some(embedding) = &doc.embedding {
-                    let score = metric.similarity(query, embedding);
-                    Some(Similarity {
-                        document: (**doc).clone(),
-                        score,
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        similarities.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-        similarities.truncate(top_k);
-        similarities
+        flat_search_top_k(&self.documents, query, self.metric, top_k, filter)
     }
 
     fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Vec<Vec<Similarity>> {
@@ -267,25 +201,7 @@ impl Index for FlatIndex {
         for query in queries.iter().cloned() {
             let docs = StdArc::clone(&docs);
             let handle = thread::spawn(move || {
-                let mut similarities: Vec<Similarity> = docs
-                    .iter()
-                    .filter_map(|doc| {
-                        if let Some(embedding) = &doc.embedding {
-                            let score = metric.similarity(&query, embedding);
-                            Some(Similarity {
-                                document: (**doc).clone(),
-                                score,
-                            })
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                similarities.sort_by(|a, b| {
-                    b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal)
-                });
-                similarities.truncate(top_k);
-                similarities
+                flat_search_top_k_slice(&docs, &query, metric, top_k, &|_| true)
             });
             handles.push(handle);
         }
@@ -311,6 +227,120 @@ impl Index for FlatIndex {
     fn metric(&self) -> DistanceMetric {
         self.metric
     }
+}
+
+#[derive(Clone)]
+pub(crate) struct HeapItem {
+    score: f32,
+    doc: Arc<Document>,
+}
+
+impl PartialEq for HeapItem {
+    fn eq(&self, other: &Self) -> bool {
+        self.score == other.score
+    }
+}
+
+impl Eq for HeapItem {}
+
+impl PartialOrd for HeapItem {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for HeapItem {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.score.total_cmp(&other.score)
+    }
+}
+
+/// Find the top-k most similar documents using a bounded min-heap.
+/// Avoids sorting all candidates and cloning documents beyond the top-k.
+pub(crate) fn flat_search_top_k(
+    documents: &dashmap::DashMap<String, Arc<Document>>,
+    query: &[f32],
+    metric: DistanceMetric,
+    top_k: usize,
+    filter: &dyn Fn(&Document) -> bool,
+) -> Vec<Similarity> {
+    if top_k == 0 || documents.is_empty() {
+        return Vec::new();
+    }
+
+    let mut heap: BinaryHeap<Reverse<HeapItem>> = BinaryHeap::with_capacity(top_k);
+    for entry in documents.iter() {
+        let doc = entry.value();
+        if !filter(doc) {
+            continue;
+        }
+        if let Some(emb) = &doc.embedding {
+            let score = metric.similarity(query, emb);
+            if heap.len() < top_k {
+                heap.push(Reverse(HeapItem {
+                    score,
+                    doc: Arc::clone(doc),
+                }));
+            } else if let Some(Reverse(top)) = heap.peek() && score > top.score {
+                heap.pop();
+                heap.push(Reverse(HeapItem {
+                    score,
+                    doc: Arc::clone(doc),
+                }));
+            }
+        }
+    }
+
+    heap.into_sorted_vec()
+        .into_iter()
+        .map(|Reverse(item)| Similarity {
+            document: (*item.doc).clone(),
+            score: item.score,
+        })
+        .collect()
+}
+
+/// Heap-based top-k over a pre-collected slice of documents (used by batch search).
+pub(crate) fn flat_search_top_k_slice(
+    docs: &[Arc<Document>],
+    query: &[f32],
+    metric: DistanceMetric,
+    top_k: usize,
+    filter: &dyn Fn(&Document) -> bool,
+) -> Vec<Similarity> {
+    if top_k == 0 || docs.is_empty() {
+        return Vec::new();
+    }
+
+    let mut heap: BinaryHeap<Reverse<HeapItem>> = BinaryHeap::with_capacity(top_k);
+    for doc in docs {
+        if !filter(doc) {
+            continue;
+        }
+        if let Some(emb) = &doc.embedding {
+            let score = metric.similarity(query, emb);
+            if heap.len() < top_k {
+                heap.push(Reverse(HeapItem {
+                    score,
+                    doc: Arc::clone(doc),
+                }));
+            } else if let Some(Reverse(top)) = heap.peek() && score > top.score {
+                heap.pop();
+                heap.push(Reverse(HeapItem {
+                    score,
+                    doc: Arc::clone(doc),
+                }));
+            }
+        }
+    }
+
+    heap.into_sorted_vec()
+        .into_iter()
+        .map(|Reverse(item)| Similarity {
+            document: (*item.doc).clone(),
+            score: item.score,
+        })
+        .collect()
 }
 
 /// Vector utilities for normalization and validation.

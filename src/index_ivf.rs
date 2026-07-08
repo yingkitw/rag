@@ -7,7 +7,7 @@ use std::sync::{Arc, RwLock};
 
 use dashmap::DashMap;
 
-use crate::index::{DistanceMetric, Index};
+use crate::index::{flat_search_top_k, flat_search_top_k_slice, DistanceMetric, Index};
 use crate::vector_store::{Document, Similarity};
 
 /// IVF index with brute-force scoring inside selected clusters.
@@ -58,20 +58,7 @@ impl IvfflatIndex {
     }
 
     fn full_scan(&self, query: &[f32], top_k: usize) -> Vec<Similarity> {
-        let mut similarities: Vec<Similarity> = self
-            .documents
-            .iter()
-            .filter_map(|entry| {
-                let doc = entry.value();
-                doc.embedding.as_ref().map(|emb| Similarity {
-                    document: (**doc).clone(),
-                    score: self.metric.similarity(query, emb),
-                })
-            })
-            .collect();
-        similarities.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-        similarities.truncate(top_k);
-        similarities
+        flat_search_top_k(&self.documents, query, self.metric, top_k, &|_| true)
     }
 }
 
@@ -155,44 +142,27 @@ impl Index for IvfflatIndex {
 
         let buckets = self.buckets.read().unwrap();
         let mut seen = std::collections::HashSet::new();
-        let mut cand_ids = Vec::new();
+        let mut candidates: Vec<Arc<Document>> = Vec::new();
         for &pi in &probe {
             if let Some(bucket) = buckets.get(pi) {
                 for id in bucket {
-                    if seen.insert(id.clone()) {
-                        cand_ids.push(id.clone());
+                    if seen.insert(id.clone()) && let Some(doc) = self.documents.get(id) {
+                        candidates.push(Arc::clone(doc.value()));
                     }
                 }
             }
         }
         drop(buckets);
 
-        let mut similarities: Vec<Similarity> = cand_ids
-            .into_iter()
-            .filter_map(|cid| {
-                let doc = self.documents.get(&cid)?;
-                let emb = doc.embedding.as_ref()?;
-                Some(Similarity {
-                    document: (**doc.value()).clone(),
-                    score: self.metric.similarity(query, emb),
-                })
-            })
-            .collect();
+        let mut similarities = flat_search_top_k_slice(&candidates, query, self.metric, top_k, &|_| true);
 
         if similarities.len() < top_k {
-            let extra = self.full_scan(query, top_k);
-            for s in extra {
-                if similarities.len() >= top_k {
-                    break;
-                }
-                if !similarities.iter().any(|x| x.document.id == s.document.id) {
-                    similarities.push(s);
-                }
-            }
+            let extra = flat_search_top_k(&self.documents, query, self.metric, top_k, &|doc| {
+                !similarities.iter().any(|s| s.document.id == doc.id)
+            });
+            similarities.extend(extra.into_iter().take(top_k - similarities.len()));
         }
 
-        similarities.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-        similarities.truncate(top_k);
         similarities
     }
 
@@ -220,23 +190,7 @@ impl Index for IvfflatIndex {
         top_k: usize,
         filter: &dyn Fn(&Document) -> bool,
     ) -> Vec<Similarity> {
-        let mut similarities: Vec<Similarity> = self
-            .documents
-            .iter()
-            .filter_map(|entry| {
-                let doc = entry.value();
-                if !filter(doc) {
-                    return None;
-                }
-                doc.embedding.as_ref().map(|embedding| Similarity {
-                    document: (**doc).clone(),
-                    score: self.metric.similarity(query, embedding),
-                })
-            })
-            .collect();
-        similarities.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-        similarities.truncate(top_k);
-        similarities
+        flat_search_top_k(&self.documents, query, self.metric, top_k, filter)
     }
 
     fn metric(&self) -> DistanceMetric {

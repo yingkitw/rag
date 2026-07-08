@@ -185,7 +185,7 @@ impl VectorStore for InMemoryVectorStore {
     }
 
     async fn search(&self, query: &[f32], top_k: usize) -> Result<Vec<Similarity>> {
-        self.search_with_filter(query, top_k, &MetadataFilter::new()).await
+        Ok(self.index.search(query, top_k))
     }
 
     async fn search_with_filter(
@@ -194,22 +194,9 @@ impl VectorStore for InMemoryVectorStore {
         top_k: usize,
         filter: &MetadataFilter,
     ) -> Result<Vec<Similarity>> {
-        let metric = self.index.metric();
-        let mut similarities: Vec<Similarity> = self
-            .documents
-            .iter()
-            .filter(|entry| filter.matches(&entry.value().metadata))
-            .filter_map(|entry| {
-                let doc = entry.value();
-                doc.embedding.as_ref().map(|emb| Similarity {
-                    document: doc.clone(),
-                    score: metric.similarity(query, emb),
-                })
-            })
-            .collect();
-        similarities.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-        similarities.truncate(top_k);
-        Ok(similarities)
+        Ok(self
+            .index
+            .search_exact_filtered(query, top_k, &|doc| filter.matches(&doc.metadata)))
     }
 
     async fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Result<Vec<Vec<Similarity>>> {

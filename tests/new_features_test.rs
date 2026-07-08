@@ -2,10 +2,10 @@ use rag::{
     aggregation::{count_by, group_by, sum_by},
     diversify::diversify,
     hybrid::{merge_hybrid, rrf_fusion},
-    index::{DistanceMetric, FlatIndex, Index},
+    index::{FlatIndex, Index},
     keyword::{Bm25Config, Bm25Index, FieldBm25Index},
     sparse::{SparseIndex, SparseVector},
-    vector_store::{Document, InMemoryVectorStore, JsonPersistentVectorStore, Similarity, VectorStore},
+    vector_store::{Document, JsonPersistentVectorStore, Similarity, VectorStore},
 };
 use std::collections::HashMap;
 use tempfile::TempDir;

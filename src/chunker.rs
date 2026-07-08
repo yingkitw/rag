@@ -225,12 +225,11 @@ fn merge_pieces(pieces: &[String], chunk_size: usize, overlap: usize) -> Vec<Str
         if !current.is_empty() && current.len() + piece.len() + 1 > chunk_size {
             chunks.push(std::mem::take(&mut current));
             // seed next chunk with trailing overlap from the just-emitted chunk
-            if overlap > 0 {
-                if let Some(last) = chunks.last() {
+            if overlap > 0
+                && let Some(last) = chunks.last() {
                     let start = last.len().saturating_sub(overlap);
                     current = last[start..].to_string();
                 }
-            }
         }
         if !current.is_empty() {
             current.push(' ');
@@ -289,7 +288,7 @@ impl TextChunker for SemanticChunker {
             let sent_tokens = tokenize_set(&sentence);
             let sim = jaccard(&current_tokens, &sent_tokens);
             if sim >= self.similarity_threshold
-                && current.len() + sentence.len() + 1 <= self.max_chunk_size
+                && current.len() + sentence.len() < self.max_chunk_size
             {
                 current.push(' ');
                 current.push_str(&sentence);

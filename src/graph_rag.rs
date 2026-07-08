@@ -390,7 +390,7 @@ where
 
         let mut doc_ids = Vec::new();
 
-        for (chunk_text, embedding) in chunks.into_iter().zip(chunk_embeddings.into_iter()) {
+        for (chunk_text, embedding) in chunks.into_iter().zip(chunk_embeddings) {
             let mut doc = Document::new(chunk_text.clone()).with_embedding(embedding);
             for (key, value) in metadata.clone() {
                 doc = doc.with_metadata(key, value);
@@ -753,9 +753,9 @@ mod tests {
         let entities = extractor.extract_entities(text).await;
 
         let names: Vec<&str> = entities.iter().map(|e| e.name.as_str()).collect();
-        assert!(names.iter().any(|n| *n == "GPT-4"));
-        assert!(names.iter().any(|n| *n == "RAG"));
-        assert!(names.iter().any(|n| *n == "LLM"));
+        assert!(names.contains(&"GPT-4"));
+        assert!(names.contains(&"RAG"));
+        assert!(names.contains(&"LLM"));
     }
 
     #[tokio::test]

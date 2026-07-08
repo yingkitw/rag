@@ -65,10 +65,19 @@ pub fn merge_hybrid(
         return Ok(Vec::new());
     }
 
-    let ids: Vec<String> = vector_hits
+    let vector_scores: std::collections::HashMap<String, f32> = vector_hits
         .iter()
-        .map(|s| s.document.id.clone())
-        .chain(keyword_hits.iter().map(|(id, _)| id.clone()))
+        .map(|s| (s.document.id.clone(), s.score))
+        .collect();
+    let keyword_scores: std::collections::HashMap<String, f32> = keyword_hits
+        .iter()
+        .map(|(id, score)| (id.clone(), *score))
+        .collect();
+
+    let ids: Vec<String> = vector_scores
+        .keys()
+        .chain(keyword_scores.keys())
+        .cloned()
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
         .collect();
@@ -77,18 +86,14 @@ pub fn merge_hybrid(
         return Ok(Vec::new());
     }
 
-    let mut v_raw = Vec::new();
-    let mut k_raw = Vec::new();
-    for id in &ids {
-        let vs = vector_hits
-            .iter()
-            .find(|s| s.document.id == *id)
-            .map(|s| s.score)
-            .unwrap_or(0.0);
-        let ks = keyword_hits.iter().find(|(i, _)| i == id).map(|(_, s)| *s).unwrap_or(0.0);
-        v_raw.push(vs);
-        k_raw.push(ks);
-    }
+    let v_raw: Vec<f32> = ids
+        .iter()
+        .map(|id| *vector_scores.get(id).unwrap_or(&0.0))
+        .collect();
+    let k_raw: Vec<f32> = ids
+        .iter()
+        .map(|id| *keyword_scores.get(id).unwrap_or(&0.0))
+        .collect();
 
     let v_n = min_max_norm(&v_raw);
     let k_n = min_max_norm(&k_raw);

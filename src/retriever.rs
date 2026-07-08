@@ -59,7 +59,7 @@ where
 
         let mut doc_ids = Vec::new();
 
-        for (chunk, embedding) in chunks.into_iter().zip(chunk_embeddings.into_iter()) {
+        for (chunk, embedding) in chunks.into_iter().zip(chunk_embeddings) {
             let doc = Document::new(chunk)
                 .with_embedding(embedding)
                 .with_metadata("source".to_string(), "document".to_string());
@@ -86,7 +86,7 @@ where
 
         let mut doc_ids = Vec::new();
 
-        for (chunk, embedding) in chunks.into_iter().zip(chunk_embeddings.into_iter()) {
+        for (chunk, embedding) in chunks.into_iter().zip(chunk_embeddings) {
             let mut doc = Document::new(chunk)
                 .with_embedding(embedding);
             for (key, value) in metadata.clone() {
@@ -294,7 +294,7 @@ mod tests {
 
         let doc = retriever
             .vector_store()
-            .get(&ids.split(',').next().unwrap())
+            .get(ids.split(',').next().unwrap())
             .await
             .unwrap()
             .unwrap();

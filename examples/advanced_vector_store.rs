@@ -1,5 +1,4 @@
 use rag::{Document, InMemoryVectorStore, MetadataFilter, VectorStore};
-use tokio;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

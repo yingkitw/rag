@@ -9,6 +9,7 @@ use rag::fastembed_store::{FastEmbedEmbeddingModel, FastEmbedReranker};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use rag::rerank::SimilarityReranker;
     use rag::vector_store::{Document, Similarity};
+    use rag::EmbeddingModel;
 
     let model = FastEmbedEmbeddingModel::new();
 

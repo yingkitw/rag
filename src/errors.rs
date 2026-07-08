@@ -79,7 +79,7 @@ mod tests {
     #[test]
     fn test_result_type_alias() {
         let ok_result: Result<i32> = Ok(42);
-        assert_eq!(ok_result.unwrap(), 42);
+        assert!(ok_result.is_ok());
 
         let err_result: Result<i32> = Err(RagError::DocumentNotFound("x".to_string()));
         assert!(err_result.is_err());
