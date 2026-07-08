@@ -28,7 +28,8 @@
 
 ## Optional / research
 
-- [ ] PostgreSQL / Qdrant / remote vector backends implementing `VectorStore`.
+- [x] Qdrant `VectorStore` backend (`QdrantVectorStore`) via REST API behind `qdrant` feature.
+- [x] PostgreSQL `VectorStore` backend (requires `pgvector` extension).
 - [x] SQLite `VectorStore` backend (`SqliteVectorStore`) via `rusqlite` behind `sqlite` feature.
 - [x] Full HNSW (`hnsw_rs` crate) implementing `Index`; IVF is a first ANN step.
 - [x] LLM-assisted `EntityExtractor` behind a feature flag (`llm-extractor`).
@@ -46,17 +47,17 @@ Comparable Rust RAG libraries: `rag-toolchain`, `foxstash`, `trueno-rag`, `faste
 
 High-value gaps to consider:
 
-- [ ] **Local ONNX embeddings** via `fastembed` or `ort` — eliminates network dependency; competitors have this as primary path.
+- [x] **Local ONNX embeddings** via `fastembed` — `FastEmbedEmbeddingModel` behind the `fastembed` feature; eliminates network dependency.
 - [x] **SQLite persistent backend** — `SqliteVectorStore` via `rusqlite`.
-- [ ] **PostgreSQL / Qdrant remote backends** — `VectorStore` implementations beyond JSON file.
-- [ ] **Local cross-encoder reranker** (ONNX-based, e.g. `bge-reranker`) — currently only external HTTP rerankers.
-- [ ] **Vector quantization** (Int8 at minimum) — foxstash reports 4x memory reduction.
-- [ ] **Compression for persistence** — LZ4 or zstd for `vectors.json` / `graph.json`.
-- [ ] **Write-ahead log (WAL)** for incremental updates without full file rewrites.
-- [ ] **Recursive / semantic / structural chunking** — beyond fixed/paragraph/sentence.
-- [ ] **Evaluation metrics** — Recall@k, Precision@k, MRR, NDCG for benchmarking retrieval quality.
-- [ ] **Image embeddings** (CLIP-style) — fastembed-rs supports Qdrant CLIP models.
-- [ ] **SIMD-accelerated distance computation** — foxstash/trueno report 3-4x speedup on AVX2/SSE/NEON.
+- [x] **PostgreSQL / Qdrant remote backends** — `VectorStore` implementations beyond JSON file.
+- [x] **Local cross-encoder reranker** (ONNX-based, e.g. `bge-reranker`) — `FastEmbedReranker` behind the `fastembed` feature.
+- [x] **Vector quantization** (Int8) — `QuantizedIndex` / `QuantizationParams` in `src/quantize.rs`.
+- [x] **Compression for persistence** — zstd via the `compress` feature (`src/compress.rs`).
+- [x] **Write-ahead log (WAL)** for incremental updates — `WriteAheadLog` in `src/wal.rs`.
+- [x] **Recursive / semantic / structural chunking** — `RecursiveChunker`, `SemanticChunker`, `StructuralChunker`.
+- [x] **Evaluation metrics** — Recall@k, Precision@k, MRR, MAP, NDCG in `src/eval.rs`.
+- [x] **Image embeddings** (CLIP-style) — `FastEmbedImageEmbeddingModel` behind the `image-embeddings` feature.
+- [x] **SIMD-accelerated distance computation** — AVX2/FMA kernels in `src/simd.rs` with scalar fallback.
 
 ## Maintenance
 

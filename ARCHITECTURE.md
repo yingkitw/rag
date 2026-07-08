@@ -39,6 +39,7 @@ The vector-centric entry point is `Retriever`. The combined vector + graph path 
 - `InMemoryVectorStore` — `DashMap` + pluggable `Index`; optional **JSON file** `save_to_file` / `load_from_file`.
 - `MinimalVectorDB` — `RwLock` map + `FlatIndex`.
 - **`JsonPersistentVectorStore`** — wraps `InMemoryVectorStore`, flushes to a path on each mutation.
+- `PostgresVectorStore` — PostgreSQL-backed `VectorStore` via the `pgvector` extension (requires `postgres` feature).
 
 ### 3. Index (`src/index.rs`)
 
@@ -56,7 +57,10 @@ The vector-centric entry point is `Retriever`. The combined vector + graph path 
 
 **Trait:** `TextChunker::chunk`.
 
-**Implementations:** `FixedSizeChunker`, `ParagraphChunker`, `SentenceChunker`.
+**Implementations:** `FixedSizeChunker`, `ParagraphChunker`, `SentenceChunker`, plus:
+- **`RecursiveChunker`** — splits by a prioritized separator list (`\n\n` → `\n` → `. ` → … → char) then merges to a target size with overlap (LangChain-style).
+- **`SemanticChunker`** — groups consecutive sentences whose token-overlap (Jaccard) stays above a threshold; starts a new chunk on a topic drop.
+- **`StructuralChunker`** — Markdown/code-aware: splits on headings (outside fenced blocks) and keeps code fences intact; falls back to fixed-size for oversized sections.
 
 ### 5. Retriever (`src/retriever.rs`)
 
@@ -122,9 +126,17 @@ The vector-centric entry point is `Retriever`. The combined vector + graph path 
 | `src/index_ivf.rs` | `IvfflatIndex` — IVF-style approximate search implementing `Index`. |
 | `JsonPersistentVectorStore` | `VectorStore` that rewrites `vectors.json` after mutations. |
 | `SqliteVectorStore` | SQLite-backed `VectorStore` (requires `sqlite` feature). |
+| `QdrantVectorStore` | Qdrant remote `VectorStore` via REST API (requires `qdrant` feature). |
+| `PostgresVectorStore` | PostgreSQL-backed `VectorStore` via `pgvector` (requires `postgres` feature). |
 | `GraphPersisted` | Serializable graph (`nodes` + `edges`). |
 | `GraphRagSnapshot` | Documents + graph + entity/chunk side maps + engine hyperparameters. |
 | `HttpEmbeddingModel` | Configurable OpenAI-compatible `/embeddings` client (requires `http`). |
+| `src/eval.rs` | Retrieval-quality metrics: `recall_at_k`, `precision_at_k`, `reciprocal_rank`, `average_precision`, `dcg_at_k`, `ndcg_at_k`, and an async `evaluate` aggregator. |
+| `src/quantize.rs` | Int8 scalar quantization — `QuantizationParams` calibration + `QuantizedIndex` approximate search. |
+| `src/simd.rs` | AVX2/FMA-accelerated distance kernels (`dot_product`, `cosine_similarity`, `euclidean_distance`, `manhattan_distance`) with scalar fallback. |
+| `src/compress.rs` | zstd-compressed JSON persistence helpers (requires `compress` feature). |
+| `src/wal.rs` | Append-only write-ahead log (`WriteAheadLog`, `WalOp`) with replay/checkpoint for incremental updates. |
+| `src/fastembed_store.rs` | Local ONNX `FastEmbedEmbeddingModel`, `FastEmbedReranker`, and `FastEmbedImageEmbeddingModel` (requires `fastembed` / `image-embeddings`). |
 
 ### 11. Errors (`src/errors.rs`)
 

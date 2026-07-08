@@ -23,7 +23,7 @@ The goal is a small, composable core that works as a library, a CLI, and an MCP 
 - Embeddings: OpenAI and/or local Ollama (see `OPENAI_API_KEY`, `OLLAMA_URL`, `OLLAMA_MODEL`). Optional **OpenAI-compatible HTTP** via [`HttpEmbeddingModel`](src/embeddings.rs).
 - Vector index: pluggable `Index` trait; default exact search via `FlatIndex`; approximate **IVF** via `IvfflatIndex` (`src/index_ivf.rs`).
 - Serialization: `serde` / `serde_json` (including **embeddings** on `Document` for JSON snapshots); MCP schemas via `schemars` where required for tools.
-- Feature flags: `http` (embedding HTTP clients), `hnsw` (approximate index), `ingest` (directory walking), `pdf` (PDF parsing), `mcp` (MCP server), `cli` (binaries), `sqlite` (SQLite `VectorStore` backend). All are enabled by default; downstream crates can opt out.
+- Feature flags: `http` (embedding HTTP clients), `hnsw` (approximate index), `ingest` (directory walking), `pdf` (PDF parsing), `mcp` (MCP server), `cli` (binaries), `sqlite` (SQLite `VectorStore` backend), `qdrant` (Qdrant `VectorStore` backend), `postgres` (PostgreSQL `VectorStore` backend via `pgvector`), `compress` (zstd persistence), `fastembed` (local ONNX embeddings + cross-encoder reranker), `image-embeddings` (CLIP-style image embeddings, implies `fastembed`). All are enabled by default except `compress`, `fastembed`, and `image-embeddings`; downstream crates can opt out.
 
 ## Public surfaces
 
@@ -58,6 +58,19 @@ The goal is a small, composable core that works as a library, a CLI, and an MCP 
 ### Ingestion
 
 - `Source` trait yields `ExtractedDocument` values from inputs such as PDF, codebase trees, and wiki-style URLs (see `src/ingestion.rs`).
+
+### Chunking
+
+- Pluggable `TextChunker`: `FixedSizeChunker`, `ParagraphChunker`, `SentenceChunker`, plus `RecursiveChunker` (separator-priority merging), `SemanticChunker` (token-overlap grouping), and `StructuralChunker` (Markdown + code-fence aware).
+
+### Quality and efficiency
+
+- **Evaluation metrics** (`src/eval.rs`): Recall@k, Precision@k, MRR, MAP, NDCG — pure functions to score any retriever against labelled ground truth.
+- **Int8 quantization** (`src/quantize.rs`): `QuantizedIndex` for ~4x memory reduction with approximate search.
+- **SIMD distances** (`src/simd.rs`): AVX2/FMA dot/cosine/euclidean kernels with scalar fallback.
+- **Compression** (`src/compress.rs`, `compress` feature): zstd-compressed JSON snapshots.
+- **Write-ahead log** (`src/wal.rs`): incremental, crash-safe `VectorStore` mutations with replay + truncate.
+- **Local models** (`src/fastembed_store.rs`, `fastembed`/`image-embeddings`): on-device ONNX embeddings, cross-encoder reranker, and CLIP image embeddings.
 
 ### MCP
 

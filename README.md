@@ -13,7 +13,10 @@ Project docs: [SPEC.md](SPEC.md) (scope and requirements), [ARCHITECTURE.md](ARC
 - SQLite persistent vector store (`SqliteVectorStore`, optional `sqlite` feature)
 - Search-oriented retrieval: configurable top-k, score-ranked results, and metadata filtering over stored chunks
 - Ingestion helpers: `Source` implementations for PDF, codebase trees, and wiki-style URLs (`ingestion` module)
-- Multiple text chunking strategies (fixed-size, paragraph, sentence)
+- Multiple text chunking strategies (fixed-size, paragraph, sentence, recursive, semantic, structural)
+- Retrieval-quality evaluation metrics (Recall@k, Precision@k, MRR, MAP, NDCG)
+- Int8 vector quantization for ~4x memory reduction, and SIMD-accelerated distance kernels (AVX2/FMA)
+- Compressed persistence (zstd), write-ahead log for incremental updates, and local ONNX embeddings/reranker/image-embeddings via `fastembed`
 - CLI for ingest and query with **persistent state** (`RAG_STATE_DIR`, default `.rag`): vector, **hybrid-query (BM25 + embeddings)**, and **graph** subcommands
 - MCP server (`rag-mcp`) with vector tools (`rag_*`) and graph or hybrid tools (`graph_*`)
 - Library API suitable for custom pipelines
@@ -48,6 +51,11 @@ rag = { git = "https://github.com/yingkitw/rag" }
 | `mcp` | `RagMcpServer`, `rag-mcp` binary, `schemars` schemas | **yes** |
 | `cli` | `rag` CLI binary, `clap`, `tracing-subscriber` | **yes** |
 | `sqlite` | `SqliteVectorStore` persistent backend | no |
+| `qdrant` | `QdrantVectorStore` remote vector backend | no |
+| `postgres` | `PostgresVectorStore` persistent backend via `pgvector` | no |
+| `compress` | zstd-compressed JSON snapshots (`rag::compress`) | no |
+| `fastembed` | Local ONNX embeddings + cross-encoder reranker (`FastEmbedEmbeddingModel`, `FastEmbedReranker`) | no |
+| `image-embeddings` | CLIP-style image embeddings (`FastEmbedImageEmbeddingModel`; implies `fastembed`) | no |
 | `openai` | Convenience alias for `http` | **yes** |
 | `ollama` | Convenience alias for `http` | **yes** |
 | `llm-extractor` | `LlmEntityExtractor` (needs `http`) | no |
@@ -164,6 +172,17 @@ cargo run --example ingest_pdf
 cargo run --example ingest_codebase
 cargo run --example ingest_wiki
 cargo run --example mcp_example
+cargo run --example sqlite_vector_store
+cargo run --example qdrant_vector_store
+cargo run --example postgres_vector_store
+cargo run --example evaluation_metrics
+cargo run --example vector_quantization
+cargo run --example advanced_chunking
+cargo run --example simd_distances
+cargo run --example write_ahead_log
+# Feature-gated:
+cargo run --example compressed_persistence --features compress
+cargo run --example local_embeddings --features fastembed
 ```
 
 ## Configuration
@@ -187,7 +206,7 @@ Vector tools: `rag_add_document`, `rag_query`, `rag_list_documents`, `rag_count`
 
 ### CLI Global Flags
 
-- `--chunker <fixed|paragraph|sentence>`: Chunking strategy (default: `paragraph`)
+- `--chunker <fixed|paragraph|sentence|recursive|semantic|structural>`: Chunking strategy (default: `paragraph`)
 - `--metric <cosine|euclidean|dot|manhattan>`: Distance metric for vector search (default: `cosine`)
 - `--state-dir <path>`: State directory (default: `.rag`; also set via `RAG_STATE_DIR`)
 
@@ -230,6 +249,32 @@ let results = index.search(&query_embedding, 10);
 - `FixedSizeChunker`: Splits text into chunks of fixed size with overlap
 - `ParagraphChunker`: Splits text by paragraphs (double newlines)
 - `SentenceChunker`: Splits text by sentences
+- `RecursiveChunker`: Splits by a prioritized separator list, then merges to a target size (LangChain-style)
+- `SemanticChunker`: Groups consecutive sentences whose token overlap stays above a threshold
+- `StructuralChunker`: Markdown + code-fence aware; keeps headings and code blocks coherent
+
+### Evaluation, Quantization & Efficiency
+
+- **Evaluation metrics** (`rag::eval`): `recall_at_k`, `precision_at_k`, `reciprocal_rank`, `average_precision`, `ndcg_at_k`, and an async `evaluate` aggregator for benchmarking retrieval quality.
+- **Quantization** (`rag::quantize`): `QuantizationParams::fit` calibrates Int8 bounds; `QuantizedIndex` offers approximate search at ~4x memory savings.
+- **SIMD distances** (`rag::simd`): `dot_product`, `cosine_similarity`, `euclidean_distance`, `manhattan_distance` with AVX2/FMA acceleration and scalar fallback.
+- **Compression** (`rag::compress`, `compress` feature): `save_compressed` / `load_compressed` for zstd JSON snapshots.
+- **Write-ahead log** (`rag::wal`): `WriteAheadLog` appends `Put`/`Delete` ops with replay + truncate for incremental, crash-safe updates.
+
+### Local Models (fastembed)
+
+Behind the `fastembed` feature (and `image-embeddings` for CLIP), models run on-device via the ONNX Runtime after a one-time download:
+
+```rust
+use rag::fastembed_store::{FastEmbedEmbeddingModel, FastEmbedReranker};
+use rag::rerank::SimilarityReranker;
+
+let model = FastEmbedEmbeddingModel::new();           // all-MiniLM-L6-v2
+let embeddings = model.embed(vec!["hello".to_string()]).await?;
+
+let reranker = FastEmbedReranker::new();              // bge-reranker-base
+let reranked = reranker.rerank("query", items).await?;
+```
 
 ### Embedding Models
 
@@ -253,6 +298,8 @@ let model = OllamaEmbeddingModel::new("nomic-embed-text".to_string())
 - `EmbeddingModel`: Trait for embedding models
 - `VectorStore`: Trait for vector storage backends
 - `SqliteVectorStore`: SQLite-backed `VectorStore` (requires `sqlite` feature)
+- `QdrantVectorStore`: Qdrant remote `VectorStore` (requires `qdrant` feature)
+- `PostgresVectorStore`: PostgreSQL-backed `VectorStore` via `pgvector` (requires `postgres` feature)
 - `Retriever`: Main interface for vector-centric RAG operations
 - `GraphStore`, `GraphNode`, `GraphEdge`: Graph storage and structure for graph-augmented retrieval
 - `GraphRagEngine`, `EntityExtractor`: Orchestration and entity linking for graph RAG

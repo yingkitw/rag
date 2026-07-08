@@ -1,6 +1,9 @@
 use clap::{Parser, Subcommand};
 use rag::{
-    chunker::{FixedSizeChunker, ParagraphChunker, SentenceChunker, TextChunker},
+    chunker::{
+        FixedSizeChunker, ParagraphChunker, RecursiveChunker, SemanticChunker, SentenceChunker,
+        StructuralChunker, TextChunker,
+    },
     embeddings::{OllamaEmbeddingModel, OpenAIEmbeddingModel},
     graph::GraphStore,
     graph_rag::{GraphRagEngine, SimpleEntityExtractor},
@@ -102,6 +105,9 @@ fn make_chunker(name: &str) -> Box<dyn TextChunker> {
         "fixed" => Box::new(FixedSizeChunker::new(500, 50)),
         "paragraph" => Box::new(ParagraphChunker),
         "sentence" => Box::new(SentenceChunker::default()),
+        "recursive" => Box::new(RecursiveChunker::default()),
+        "semantic" => Box::new(SemanticChunker::default()),
+        "structural" => Box::new(StructuralChunker::default()),
         _ => Box::new(ParagraphChunker),
     }
 }
@@ -442,6 +448,9 @@ mod tests {
         let _ = make_chunker("fixed");
         let _ = make_chunker("paragraph");
         let _ = make_chunker("sentence");
+        let _ = make_chunker("recursive");
+        let _ = make_chunker("semantic");
+        let _ = make_chunker("structural");
         let _ = make_chunker("unknown");
     }
 

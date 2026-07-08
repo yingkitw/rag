@@ -7,6 +7,14 @@ pub mod diversify;
 pub mod aggregation;
 pub mod fuzzy;
 pub mod sparse;
+pub mod eval;
+pub mod quantize;
+pub mod simd;
+pub mod wal;
+#[cfg(feature = "compress")]
+pub mod compress;
+#[cfg(feature = "fastembed")]
+pub mod fastembed_store;
 #[cfg(feature = "http")]
 pub mod rerank_external;
 #[cfg(feature = "http")]
@@ -23,6 +31,10 @@ pub mod errors;
 pub mod mcp;
 #[cfg(feature = "sqlite")]
 pub mod store_sqlite;
+#[cfg(feature = "qdrant")]
+pub mod store_qdrant;
+#[cfg(feature = "postgres")]
+pub mod store_postgres;
 pub mod index;
 #[cfg(feature = "hnsw")]
 pub mod index_hnsw;
@@ -48,6 +60,10 @@ pub use index_hnsw::HnswIndex;
 pub use index_ivf::IvfflatIndex;
 #[cfg(feature = "sqlite")]
 pub use store_sqlite::SqliteVectorStore;
+#[cfg(feature = "qdrant")]
+pub use store_qdrant::QdrantVectorStore;
+#[cfg(feature = "postgres")]
+pub use store_postgres::PostgresVectorStore;
 pub use ingestion::{Source, ExtractedDocument};
 #[cfg(feature = "pdf")]
 pub use ingestion::PdfSource;
@@ -70,6 +86,19 @@ pub use diversify::diversify;
 pub use aggregation::{count_by, group_by, sum_by};
 pub use fuzzy::{levenshtein, is_fuzzy_match, fuzzy_filter};
 pub use sparse::{SparseVector, SparseIndex};
+pub use eval::{
+    average_precision, dcg_at_k, evaluate, graded_relevance, idcg_at_k, ndcg_at_k, precision_at_k,
+    recall_at_k, reciprocal_rank, relevance_set, EvalReport,
+};
+pub use quantize::{QuantizationParams, QuantizedIndex};
+pub use wal::{WriteAheadLog, WalOp, apply_ops};
+pub use chunker::{RecursiveChunker, SemanticChunker, StructuralChunker};
+#[cfg(feature = "compress")]
+pub use compress::{save_compressed, load_compressed, compress_bytes, decompress_bytes};
+#[cfg(feature = "fastembed")]
+pub use fastembed_store::{FastEmbedEmbeddingModel, FastEmbedReranker};
+#[cfg(feature = "image-embeddings")]
+pub use fastembed_store::FastEmbedImageEmbeddingModel;
 #[cfg(feature = "http")]
 pub use rerank_external::{CohereReranker, VoyageReranker, MixedBreadReranker};
 #[cfg(feature = "http")]

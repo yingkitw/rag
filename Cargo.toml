@@ -1,6 +1,6 @@
 [package]
 name = "rag"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 description = "A Rust library and CLI for Retrieval-Augmented Generation"
 license = "Apache-2.0"
@@ -58,6 +58,16 @@ schemars = { version = "1.0", optional = true }
 # Optional: SQLite persistent vector backend
 rusqlite = { version = "0.32", features = ["bundled"], optional = true }
 
+# Optional: PostgreSQL vector backend
+tokio-postgres = { version = "0.7", features = ["runtime"], optional = true }
+pgvector = { version = "0.3", features = ["postgres"], optional = true }
+
+# Optional: compression for persistence files
+zstd = { version = "0.13", optional = true }
+
+# Optional: local ONNX embeddings / reranker / image embeddings (no network at inference)
+fastembed = { version = "4", optional = true }
+
 [dev-dependencies]
 tempfile = "3.8"
 
@@ -70,9 +80,14 @@ ingest = ["dep:walkdir"]
 mcp = ["dep:rmcp", "dep:schemars", "dep:tracing-subscriber", "http"]
 cli = ["dep:clap", "dep:tracing-subscriber", "http"]
 sqlite = ["dep:rusqlite"]
+qdrant = ["dep:reqwest"]
+postgres = ["dep:tokio-postgres", "dep:pgvector"]
 openai = ["http"]
 ollama = ["http"]
 llm-extractor = ["http"]
+compress = ["dep:zstd"]
+fastembed = ["dep:fastembed"]
+image-embeddings = ["fastembed"]
 
 [[example]]
 name = "simple_rag"
@@ -162,3 +177,43 @@ required-features = ["http"]
 name = "sqlite_vector_store"
 path = "examples/sqlite_vector_store.rs"
 required-features = ["sqlite"]
+
+[[example]]
+name = "qdrant_vector_store"
+path = "examples/qdrant_vector_store.rs"
+required-features = ["qdrant"]
+
+[[example]]
+name = "postgres_vector_store"
+path = "examples/postgres_vector_store.rs"
+required-features = ["postgres"]
+
+[[example]]
+name = "evaluation_metrics"
+path = "examples/evaluation_metrics.rs"
+
+[[example]]
+name = "vector_quantization"
+path = "examples/vector_quantization.rs"
+
+[[example]]
+name = "advanced_chunking"
+path = "examples/advanced_chunking.rs"
+
+[[example]]
+name = "simd_distances"
+path = "examples/simd_distances.rs"
+
+[[example]]
+name = "compressed_persistence"
+path = "examples/compressed_persistence.rs"
+required-features = ["compress"]
+
+[[example]]
+name = "write_ahead_log"
+path = "examples/write_ahead_log.rs"
+
+[[example]]
+name = "local_embeddings"
+path = "examples/local_embeddings.rs"
+required-features = ["fastembed"]
