@@ -1,5 +1,6 @@
 #![cfg(feature = "postgres")]
 
+use rag::id::new_uuid_v4;
 use rag::vector_store::{Document, MetadataFilter, VectorStore};
 use rag::{DistanceMetric, PostgresVectorStore};
 
@@ -11,7 +12,7 @@ fn postgres_url() -> String {
 
 async fn connect_test_store(prefix: &str) -> Option<(PostgresVectorStore, String)> {
     let conn_str = postgres_url();
-    let table = format!("{}_{}", prefix, uuid::Uuid::new_v4().to_string().replace('-', "_"));
+    let table = format!("{}_{}", prefix, new_uuid_v4().replace('-', "_"));
     match PostgresVectorStore::connect(&conn_str, &table).await {
         Ok(store) => Some((store, table)),
         Err(e) => {

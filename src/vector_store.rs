@@ -6,7 +6,8 @@ use std::fs::{self, File};
 use std::io::BufWriter;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
-use uuid::Uuid;
+
+use crate::id::new_uuid_v4;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
@@ -20,7 +21,7 @@ pub struct Document {
 impl Document {
     pub fn new(content: String) -> Self {
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: new_uuid_v4(),
             content,
             metadata: HashMap::new(),
             embedding: None,

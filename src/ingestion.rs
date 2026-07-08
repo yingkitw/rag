@@ -3,6 +3,27 @@ use std::collections::HashMap;
 #[allow(unused_imports)]
 use std::path::{Path, PathBuf};
 
+/// Percent-encode a string for a URL path segment. Keeps unreserved chars
+/// (`A-Za-z0-9-_.~`); all other bytes become `%XX` (uppercase hex), matching the
+/// behavior of the `urlencoding` crate.
+#[cfg(feature = "http")]
+fn percent_encode(input: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut out = String::with_capacity(input.len());
+    for &byte in input.as_bytes() {
+        let keep =
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~');
+        if keep {
+            out.push(byte as char);
+        } else {
+            out.push('%');
+            out.push(HEX[(byte >> 4) as usize] as char);
+            out.push(HEX[(byte & 0x0f) as usize] as char);
+        }
+    }
+    out
+}
+
 /// A document extracted from an external source, ready for chunking and embedding.
 #[derive(Debug, Clone)]
 pub struct ExtractedDocument {
@@ -450,7 +471,7 @@ impl Source for WikiSource {
         let url = format!(
             "https://{}.wikipedia.org/api/rest_v1/page/summary/{}",
             self.language,
-            urlencoding::encode(&self.title.replace(' ', "_"))
+            percent_encode(&self.title.replace(' ', "_"))
         );
 
         let response = reqwest::get(&url).await.map_err(|e| {
@@ -492,7 +513,7 @@ impl Source for WikiSource {
                 format!(
                     "https://{}.wikipedia.org/wiki/{}",
                     self.language,
-                    urlencoding::encode(&title.replace(' ', "_"))
+                    percent_encode(&title.replace(' ', "_"))
                 ),
             );
 

@@ -1,31 +1,72 @@
-use thiserror::Error;
+use std::fmt;
 
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum RagError {
-    #[error("Embedding API error: {0}")]
     EmbeddingError(String),
 
     #[cfg(feature = "http")]
-    #[error("HTTP request failed: {0}")]
-    HttpError(#[from] reqwest::Error),
+    HttpError(reqwest::Error),
 
-    #[error("JSON serialization/deserialization error: {0}")]
-    JsonError(#[from] serde_json::Error),
+    JsonError(serde_json::Error),
 
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
+    IoError(std::io::Error),
 
-    #[error("Vector store error: {0}")]
     VectorStoreError(String),
 
-    #[error("Document not found: {0}")]
     DocumentNotFound(String),
 
-    #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
 
-    #[error("Graph error: {0}")]
     GraphError(String),
+}
+
+impl fmt::Display for RagError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RagError::EmbeddingError(msg) => write!(f, "Embedding API error: {}", msg),
+            #[cfg(feature = "http")]
+            RagError::HttpError(err) => write!(f, "HTTP request failed: {}", err),
+            RagError::JsonError(err) => {
+                write!(f, "JSON serialization/deserialization error: {}", err)
+            }
+            RagError::IoError(err) => write!(f, "IO error: {}", err),
+            RagError::VectorStoreError(msg) => write!(f, "Vector store error: {}", msg),
+            RagError::DocumentNotFound(msg) => write!(f, "Document not found: {}", msg),
+            RagError::InvalidConfig(msg) => write!(f, "Invalid configuration: {}", msg),
+            RagError::GraphError(msg) => write!(f, "Graph error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for RagError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            #[cfg(feature = "http")]
+            RagError::HttpError(err) => Some(err),
+            RagError::JsonError(err) => Some(err),
+            RagError::IoError(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl From<serde_json::Error> for RagError {
+    fn from(err: serde_json::Error) -> Self {
+        RagError::JsonError(err)
+    }
+}
+
+impl From<std::io::Error> for RagError {
+    fn from(err: std::io::Error) -> Self {
+        RagError::IoError(err)
+    }
+}
+
+#[cfg(feature = "http")]
+impl From<reqwest::Error> for RagError {
+    fn from(err: reqwest::Error) -> Self {
+        RagError::HttpError(err)
+    }
 }
 
 pub type Result<T> = std::result::Result<T, RagError>;

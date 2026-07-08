@@ -1,10 +1,10 @@
 use crate::errors::{RagError, Result};
+use crate::id::new_uuid_v4;
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::Path;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphNode {
@@ -17,7 +17,7 @@ pub struct GraphNode {
 impl GraphNode {
     pub fn new(name: String, label: String) -> Self {
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: new_uuid_v4(),
             label,
             name,
             properties: HashMap::new(),
@@ -48,7 +48,7 @@ pub struct GraphEdge {
 impl GraphEdge {
     pub fn new(source: String, target: String, relation: String) -> Self {
         Self {
-            id: Uuid::new_v4().to_string(),
+            id: new_uuid_v4(),
             source,
             target,
             relation,
