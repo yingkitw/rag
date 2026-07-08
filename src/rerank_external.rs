@@ -1,6 +1,5 @@
 //! External reranker implementations via HTTP APIs.
 
-use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -39,7 +38,6 @@ struct CohereResult {
     relevance_score: f32,
 }
 
-#[async_trait]
 impl SimilarityReranker for CohereReranker {
     async fn rerank(&self, query: &str, items: Vec<Similarity>) -> Result<Vec<Similarity>> {
         if items.is_empty() {
@@ -98,7 +96,6 @@ struct VoyageResult {
     relevance_score: f32,
 }
 
-#[async_trait]
 impl SimilarityReranker for VoyageReranker {
     async fn rerank(&self, query: &str, items: Vec<Similarity>) -> Result<Vec<Similarity>> {
         if items.is_empty() {
@@ -157,7 +154,6 @@ struct MixedBreadResult {
     score: f32,
 }
 
-#[async_trait]
 impl SimilarityReranker for MixedBreadReranker {
     async fn rerank(&self, query: &str, items: Vec<Similarity>) -> Result<Vec<Similarity>> {
         if items.is_empty() {

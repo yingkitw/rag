@@ -373,24 +373,43 @@ impl Source for CodebaseSource {
     async fn extract(&self) -> Result<Vec<ExtractedDocument>> {
         let mut docs = Vec::new();
 
-        let entries = walkdir::WalkDir::new(&self.root)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file());
+        // Hand-rolled recursive directory walk (no `walkdir` dependency).
+        // Build/VCS directories are pruned during descent, which both avoids
+        // descending into huge trees and mirrors the original skip rules.
+        const SKIP_DIRS: &[&str] = &[
+            ".git", ".github", ".vscode", ".idea", ".cargo",
+            "target", "node_modules", "vendor", "dist", "build",
+            "__pycache__", ".mypy_cache", ".pytest_cache",
+        ];
 
-        for entry in entries {
-            let path = entry.path();
-
-            // Skip hidden directories and common build artifacts
-            let path_str = path.to_string_lossy();
-            let skip_patterns = [
-                "/.git/", "/.github/", "/.vscode/", "/.idea/", "/.cargo/",
-                "/target/", "/node_modules/", "/vendor/", "/dist/", "/build/",
-                "/__pycache__/", "/.mypy_cache/", "/.pytest_cache/",
-            ];
-            if skip_patterns.iter().any(|p| path_str.contains(p)) {
-                continue;
+        let mut paths: Vec<PathBuf> = Vec::new();
+        let mut stack: Vec<PathBuf> = vec![self.root.clone()];
+        while let Some(dir) = stack.pop() {
+            let read_dir = match std::fs::read_dir(&dir) {
+                Ok(rd) => rd,
+                Err(_) => continue,
+            };
+            for entry in read_dir.flatten() {
+                let ft = match entry.file_type() {
+                    Ok(ft) => ft,
+                    Err(_) => continue,
+                };
+                let path = entry.path();
+                if ft.is_dir() {
+                    if path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| !SKIP_DIRS.contains(&n))
+                    {
+                        stack.push(path);
+                    }
+                } else if ft.is_file() {
+                    paths.push(path);
+                }
             }
+        }
+
+        for path in paths {
             // Skip hidden files (names starting with dot)
             if path.file_name()
                 .and_then(|n| n.to_str())
@@ -409,7 +428,7 @@ impl Source for CodebaseSource {
             }
 
             // Check file size
-            let metadata = match std::fs::metadata(path) {
+            let metadata = match std::fs::metadata(&path) {
                 Ok(m) => m,
                 Err(_) => continue,
             };
@@ -418,12 +437,12 @@ impl Source for CodebaseSource {
             }
 
             // Read content
-            let content = match std::fs::read_to_string(path) {
+            let content = match std::fs::read_to_string(&path) {
                 Ok(c) => c,
                 Err(_) => continue, // Skip binary files
             };
 
-            let relative = path.strip_prefix(&self.root).unwrap_or(path);
+            let relative = path.strip_prefix(&self.root).unwrap_or(&path);
             let doc = ExtractedDocument::new(content, relative.to_string_lossy().to_string())
                 .with_metadata("format".to_string(), "code".to_string())
                 .with_metadata("extension".to_string(), ext.to_string())

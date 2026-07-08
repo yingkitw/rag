@@ -1,6 +1,5 @@
 //! Integration-style tests for `GraphRagEngine` without network (deterministic embeddings).
 
-use async_trait::async_trait;
 use rag::{
     chunker::ParagraphChunker,
     embeddings::EmbeddingModel,
@@ -33,7 +32,6 @@ impl DeterministicEmbedder {
     }
 }
 
-#[async_trait]
 impl EmbeddingModel for DeterministicEmbedder {
     async fn embed(&self, texts: Vec<String>) -> rag::errors::Result<Vec<Vec<f32>>> {
         Ok(texts.iter().map(|t| self.vector_for(t)).collect())

@@ -10,7 +10,6 @@
 //! - [`FastEmbedImageEmbeddingModel`] (behind the `image-embeddings` feature)
 //!   produces CLIP-style image embeddings.
 
-use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -68,7 +67,6 @@ impl Default for FastEmbedEmbeddingModel {
 }
 
 #[cfg(feature = "fastembed")]
-#[async_trait]
 impl EmbeddingModel for FastEmbedEmbeddingModel {
     async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
         let model = self.get().await?;
@@ -128,7 +126,6 @@ impl Default for FastEmbedReranker {
 }
 
 #[cfg(feature = "fastembed")]
-#[async_trait]
 impl SimilarityReranker for FastEmbedReranker {
     async fn rerank(&self, query: &str, items: Vec<Similarity>) -> Result<Vec<Similarity>> {
         if items.is_empty() {

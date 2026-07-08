@@ -3,13 +3,11 @@ use rag::{
     retriever::Retriever,
     vector_store::InMemoryVectorStore,
 };
-use async_trait::async_trait;
 
 /// Deterministic mock embedding model.
 #[derive(Clone)]
 struct MockEmbeddingModel;
 
-#[async_trait]
 impl EmbeddingModel for MockEmbeddingModel {
     async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>, rag::errors::RagError> {
         Ok(texts

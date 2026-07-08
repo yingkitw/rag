@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use dashmap::DashMap;
 use rmcp::{
     ErrorData as McpError,
@@ -73,7 +72,6 @@ enum EmbeddingBackend {
     Ollama(OllamaEmbeddingModel),
 }
 
-#[async_trait]
 impl EmbeddingModel for EmbeddingBackend {
     async fn embed(&self, texts: Vec<String>) -> crate::errors::Result<Vec<Vec<f32>>> {
         match self {

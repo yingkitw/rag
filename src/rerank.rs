@@ -1,19 +1,21 @@
 //! Optional re-ranking hook for similarity lists (default: identity).
 
-use async_trait::async_trait;
+use std::future::Future;
 
 use crate::errors::Result;
 use crate::vector_store::Similarity;
 
-#[async_trait]
 pub trait SimilarityReranker: Send + Sync {
-    async fn rerank(&self, query: &str, items: Vec<Similarity>) -> Result<Vec<Similarity>>;
+    fn rerank(
+        &self,
+        query: &str,
+        items: Vec<Similarity>,
+    ) -> impl Future<Output = Result<Vec<Similarity>>> + Send;
 }
 
 /// No-op reranker (preserves order and scores).
 pub struct PassthroughReranker;
 
-#[async_trait]
 impl SimilarityReranker for PassthroughReranker {
     async fn rerank(&self, _query: &str, items: Vec<Similarity>) -> Result<Vec<Similarity>> {
         Ok(items)
@@ -21,8 +23,8 @@ impl SimilarityReranker for PassthroughReranker {
 }
 
 /// Apply a reranker to an owned similarity list.
-pub async fn rerank_similarities(
-    reranker: &dyn SimilarityReranker,
+pub async fn rerank_similarities<R: SimilarityReranker>(
+    reranker: &R,
     query: &str,
     items: Vec<Similarity>,
 ) -> Result<Vec<Similarity>> {

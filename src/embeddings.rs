@@ -1,7 +1,7 @@
-use async_trait::async_trait;
 #[cfg(feature = "http")]
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::future::Future;
 
 use crate::errors::{RagError, Result};
 
@@ -17,14 +17,15 @@ pub struct EmbeddingResponse {
     pub model: String,
 }
 
-#[async_trait]
 pub trait EmbeddingModel: Send + Sync {
-    async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>>;
-    async fn embed_single(&self, text: &str) -> Result<Vec<f32>> {
-        let embeddings = self.embed(vec![text.to_string()]).await?;
-        Ok(embeddings.into_iter().next().ok_or(RagError::EmbeddingError(
-            "No embedding returned".to_string(),
-        ))?)
+    fn embed(&self, texts: Vec<String>) -> impl Future<Output = Result<Vec<Vec<f32>>>> + Send;
+    fn embed_single(&self, text: &str) -> impl Future<Output = Result<Vec<f32>>> + Send {
+        async move {
+            let embeddings = self.embed(vec![text.to_string()]).await?;
+            Ok(embeddings.into_iter().next().ok_or(RagError::EmbeddingError(
+                "No embedding returned".to_string(),
+            ))?)
+        }
     }
 }
 
@@ -80,7 +81,6 @@ struct OpenAIEmbeddingData {
 }
 
 #[cfg(feature = "http")]
-#[async_trait]
 impl EmbeddingModel for OpenAIEmbeddingModel {
     async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
         let request = OpenAIRequest {
@@ -145,7 +145,6 @@ struct OllamaResponse {
 }
 
 #[cfg(feature = "http")]
-#[async_trait]
 impl EmbeddingModel for OllamaEmbeddingModel {
     async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
         let mut embeddings = Vec::new();
@@ -218,7 +217,6 @@ impl HttpEmbeddingModel {
 }
 
 #[cfg(feature = "http")]
-#[async_trait]
 impl EmbeddingModel for HttpEmbeddingModel {
     async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
         let request = OpenAIRequest {

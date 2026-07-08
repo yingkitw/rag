@@ -3,10 +3,10 @@ use crate::embeddings::EmbeddingModel;
 use crate::errors::Result;
 use crate::graph::{GraphEdge, GraphNode, GraphPersisted, GraphStore};
 use crate::vector_store::{load_all_documents, Document, InMemoryVectorStore, VectorStore};
-use async_trait::async_trait;
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::path::Path;
 
 #[derive(Debug, Clone)]
@@ -15,9 +15,8 @@ pub struct ExtractedEntity {
     pub label: String,
 }
 
-#[async_trait]
 pub trait EntityExtractor: Send + Sync {
-    async fn extract_entities(&self, text: &str) -> Vec<ExtractedEntity>;
+    fn extract_entities(&self, text: &str) -> impl Future<Output = Vec<ExtractedEntity>> + Send;
 }
 
 pub struct SimpleEntityExtractor {
@@ -38,7 +37,6 @@ impl SimpleEntityExtractor {
     }
 }
 
-#[async_trait]
 impl EntityExtractor for SimpleEntityExtractor {
     async fn extract_entities(&self, text: &str) -> Vec<ExtractedEntity> {
         let mut seen = HashSet::new();
@@ -89,7 +87,6 @@ impl SeedEntityExtractor {
     }
 }
 
-#[async_trait]
 impl EntityExtractor for SeedEntityExtractor {
     async fn extract_entities(&self, text: &str) -> Vec<ExtractedEntity> {
         let lower = text.to_lowercase();
@@ -128,7 +125,6 @@ impl LlmEntityExtractor {
 }
 
 #[cfg(feature = "llm-extractor")]
-#[async_trait]
 impl EntityExtractor for LlmEntityExtractor {
     async fn extract_entities(&self, text: &str) -> Vec<ExtractedEntity> {
         let prompt = format!(

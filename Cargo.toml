@@ -28,7 +28,6 @@ required-features = ["mcp"]
 tokio = { version = "1.35", features = ["rt-multi-thread", "macros", "fs"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-async-trait = "0.1"
 dashmap = "5.5"
 
 # Optional: structured logging
@@ -48,9 +47,6 @@ hnsw_rs = { version = "0.3", optional = true }
 
 # Optional: PDF ingestion
 lopdf = { version = "0.32", optional = true }
-
-# Optional: Codebase / directory tree ingestion
-walkdir = { version = "2.5", optional = true }
 
 # Optional: MCP server protocol
 rmcp = { version = "1.6", features = ["server", "macros", "transport-io", "schemars"], optional = true }
@@ -77,7 +73,7 @@ default = ["http", "hnsw", "ingest", "pdf", "mcp", "cli"]
 http = ["dep:reqwest"]
 hnsw = ["dep:hnsw_rs"]
 pdf = ["dep:lopdf"]
-ingest = ["dep:walkdir"]
+ingest = []
 mcp = ["dep:rmcp", "dep:schemars", "dep:tracing-subscriber", "dep:tracing", "http"]
 cli = ["dep:clap", "dep:tracing-subscriber", "http"]
 sqlite = ["dep:rusqlite"]

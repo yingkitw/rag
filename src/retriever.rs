@@ -232,14 +232,11 @@ mod tests {
     use crate::embeddings::EmbeddingModel;
     use crate::errors::Result;
     use crate::vector_store::InMemoryVectorStore;
-    use async_trait::async_trait;
-
     /// Mock embedding model that returns deterministic embeddings.
     /// Each word gets a simple embedding based on character sums.
     #[derive(Clone)]
     struct MockEmbeddingModel;
 
-    #[async_trait]
     impl EmbeddingModel for MockEmbeddingModel {
         async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
             let mut results = Vec::new();
