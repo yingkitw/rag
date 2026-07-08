@@ -39,7 +39,9 @@ clap = { version = "4.4", features = ["derive", "env"], optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 
 # Optional: HTTP-based embedding models, rerankers, query rewriting, contextual retrieval
-reqwest = { version = "0.11", features = ["json"], optional = true }
+# rustls-tls avoids native-tls/openssl (smaller, portable, bundled roots);
+# default-features disabled drops unused http2/charset/macos-system-configuration.
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"], optional = true }
 
 # Optional: HNSW approximate index
 hnsw_rs = { version = "0.3", optional = true }
@@ -216,3 +218,14 @@ path = "examples/write_ahead_log.rs"
 name = "local_embeddings"
 path = "examples/local_embeddings.rs"
 required-features = ["fastembed"]
+
+# --- Build size optimization ---
+# Aggressive size reduction for release artifacts (binaries + release-built lib).
+# `cargo test` is unaffected: the `test` profile inherits from `dev` (unwinding),
+# so the lib is recompiled for tests without these settings.
+[profile.release]
+opt-level = "z"      # optimize for binary size
+lto = true           # fat link-time optimization across the whole dependency graph
+codegen-units = 1    # single codegen unit -> better dead-code elimination & inlining
+strip = true         # strip debug symbols from the final binary
+panic = "abort"      # drop unwind tables and landing pads
