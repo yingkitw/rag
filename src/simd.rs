@@ -17,7 +17,9 @@ pub fn dot_product(a: &[f32], b: &[f32]) -> f32 {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("fma") && a.len() >= 8 {
-            unsafe { return dot_fma(a, b); }
+            unsafe {
+                return dot_fma(a, b);
+            }
         }
     }
     scalar_dot(a, b)
@@ -149,7 +151,12 @@ mod tests {
     fn test_euclidean_distance_matches_scalar() {
         let a: Vec<f32> = (0..50).map(|i| i as f32).collect();
         let b: Vec<f32> = (0..50).map(|i| (i + 1) as f32).collect();
-        let expected: f32 = a.iter().zip(b.iter()).map(|(x, y)| (x - y) * (x - y)).sum::<f32>().sqrt();
+        let expected: f32 = a
+            .iter()
+            .zip(b.iter())
+            .map(|(x, y)| (x - y) * (x - y))
+            .sum::<f32>()
+            .sqrt();
         assert!((euclidean_distance(&a, &b) - expected).abs() < 1e-3);
     }
 

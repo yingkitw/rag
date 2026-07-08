@@ -62,7 +62,9 @@ impl PostgresVectorStore {
         self.client
             .execute("CREATE EXTENSION IF NOT EXISTS vector", &[])
             .await
-            .map_err(|e| RagError::VectorStoreError(format!("Create vector extension failed: {}", e)))?;
+            .map_err(|e| {
+                RagError::VectorStoreError(format!("Create vector extension failed: {}", e))
+            })?;
 
         let sql = format!(
             "CREATE TABLE IF NOT EXISTS {} (
@@ -87,18 +89,21 @@ impl PostgresVectorStore {
         let content: String = row
             .try_get(1)
             .map_err(|e| RagError::VectorStoreError(format!("Row decode content failed: {}", e)))?;
-        let metadata_json: String = row
-            .try_get(2)
-            .map_err(|e| RagError::VectorStoreError(format!("Row decode metadata failed: {}", e)))?;
-        let metadata: HashMap<String, String> = serde_json::from_str::<serde_json::Value>(&metadata_json)
-            .map_err(|e| RagError::VectorStoreError(format!("Metadata JSON parse failed: {}", e)))?
-            .as_object()
-            .map(|o| {
-                o.iter()
-                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let metadata_json: String = row.try_get(2).map_err(|e| {
+            RagError::VectorStoreError(format!("Row decode metadata failed: {}", e))
+        })?;
+        let metadata: HashMap<String, String> =
+            serde_json::from_str::<serde_json::Value>(&metadata_json)
+                .map_err(|e| {
+                    RagError::VectorStoreError(format!("Metadata JSON parse failed: {}", e))
+                })?
+                .as_object()
+                .map(|o| {
+                    o.iter()
+                        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                        .collect()
+                })
+                .unwrap_or_default();
         let embedding: Option<Vec<f32>> = row
             .try_get::<_, Option<Vector>>(3)
             .map_err(|e| RagError::VectorStoreError(format!("Row decode embedding failed: {}", e)))?
@@ -168,12 +173,7 @@ impl VectorStore for PostgresVectorStore {
         self.client
             .execute(
                 &sql,
-                &[
-                    &document.id,
-                    &document.content,
-                    &metadata_json,
-                    &embedding,
-                ],
+                &[&document.id, &document.content, &metadata_json, &embedding],
             )
             .await
             .map_err(|e| RagError::VectorStoreError(format!("Insert failed: {}", e)))?;
@@ -188,7 +188,8 @@ impl VectorStore for PostgresVectorStore {
     }
 
     async fn search(&self, query: &[f32], top_k: usize) -> Result<Vec<Similarity>> {
-        self.search_with_filter(query, top_k, &MetadataFilter::new()).await
+        self.search_with_filter(query, top_k, &MetadataFilter::new())
+            .await
     }
 
     async fn search_with_filter(
@@ -219,9 +220,9 @@ impl VectorStore for PostgresVectorStore {
 
         let mut results = Vec::with_capacity(rows.len());
         for row in rows {
-            let distance: f32 = row
-                .try_get(4)
-                .map_err(|e| RagError::VectorStoreError(format!("Distance decode failed: {}", e)))?;
+            let distance: f32 = row.try_get(4).map_err(|e| {
+                RagError::VectorStoreError(format!("Distance decode failed: {}", e))
+            })?;
             let document = Self::row_to_doc(&row)?;
             results.push(Similarity {
                 document,
@@ -231,7 +232,11 @@ impl VectorStore for PostgresVectorStore {
         Ok(results)
     }
 
-    async fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Result<Vec<Vec<Similarity>>> {
+    async fn search_batch(
+        &self,
+        queries: &[Vec<f32>],
+        top_k: usize,
+    ) -> Result<Vec<Vec<Similarity>>> {
         let mut results = Vec::with_capacity(queries.len());
         for q in queries {
             results.push(self.search(q, top_k).await?);
@@ -269,7 +274,10 @@ impl VectorStore for PostgresVectorStore {
         if ids.is_empty() {
             return Ok(0);
         }
-        let sql = format!("DELETE FROM {} WHERE id = ANY($1)", quote_ident(&self.table));
+        let sql = format!(
+            "DELETE FROM {} WHERE id = ANY($1)",
+            quote_ident(&self.table)
+        );
         let rows = self
             .client
             .execute(&sql, &[&ids])

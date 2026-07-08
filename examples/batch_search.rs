@@ -1,6 +1,6 @@
 use rag::{
-    vector_store::{Document, InMemoryVectorStore, VectorStore},
     DistanceMetric,
+    vector_store::{Document, InMemoryVectorStore, VectorStore},
 };
 
 #[tokio::main]
@@ -12,8 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let docs = vec![
         Document::new("Rust programming language".to_string())
             .with_embedding(vec![1.0, 0.0, 0.0, 0.0]),
-        Document::new("Python data science".to_string())
-            .with_embedding(vec![0.0, 1.0, 0.0, 0.0]),
+        Document::new("Python data science".to_string()).with_embedding(vec![0.0, 1.0, 0.0, 0.0]),
         Document::new("JavaScript web development".to_string())
             .with_embedding(vec![0.0, 0.0, 1.0, 0.0]),
         Document::new("Go systems programming".to_string())
@@ -54,12 +53,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let euclidean_store = InMemoryVectorStore::with_metric(DistanceMetric::Euclidean);
 
     let docs = vec![
-        Document::new("Point A at origin".to_string())
-            .with_embedding(vec![0.0, 0.0, 0.0]),
-        Document::new("Point B near origin".to_string())
-            .with_embedding(vec![0.1, 0.1, 0.1]),
-        Document::new("Point C far away".to_string())
-            .with_embedding(vec![10.0, 10.0, 10.0]),
+        Document::new("Point A at origin".to_string()).with_embedding(vec![0.0, 0.0, 0.0]),
+        Document::new("Point B near origin".to_string()).with_embedding(vec![0.1, 0.1, 0.1]),
+        Document::new("Point C far away".to_string()).with_embedding(vec![10.0, 10.0, 10.0]),
     ];
 
     euclidean_store.add_batch(docs).await?;

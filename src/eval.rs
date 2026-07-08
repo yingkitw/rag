@@ -26,7 +26,10 @@ where
         return 1.0;
     }
     let k = k.min(retrieved.len());
-    let hits = retrieved[..k].iter().filter(|id| relevant.contains(id)).count();
+    let hits = retrieved[..k]
+        .iter()
+        .filter(|id| relevant.contains(id))
+        .count();
     hits as f64 / relevant.len() as f64
 }
 
@@ -42,7 +45,10 @@ where
     if k == 0 {
         return 0.0;
     }
-    let hits = retrieved[..k].iter().filter(|id| relevant.contains(id)).count();
+    let hits = retrieved[..k]
+        .iter()
+        .filter(|id| relevant.contains(id))
+        .count();
     hits as f64 / k as f64
 }
 
@@ -151,11 +157,7 @@ impl EvalReport {
 /// Evaluate a retriever over multiple (query, relevant_ids) pairs at a fixed k.
 ///
 /// `retrieve` maps a query string to its ranked list of document ids.
-pub async fn evaluate<F, Fut, T, S>(
-    queries: Vec<(S, Vec<T>)>,
-    k: usize,
-    retrieve: F,
-) -> EvalReport
+pub async fn evaluate<F, Fut, T, S>(queries: Vec<(S, Vec<T>)>, k: usize, retrieve: F) -> EvalReport
 where
     T: Eq + Hash + Clone + Send + 'static,
     S: AsRef<str> + Send + 'static,

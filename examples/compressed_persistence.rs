@@ -26,7 +26,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let json = serde_json::to_vec_pretty(&snap)?;
     let compressed = compress_bytes(&json, 19)?;
     println!("raw json bytes   : {}", json.len());
-    println!("compressed bytes : {} ({:.1}x smaller)", compressed.len(), json.len() as f64 / compressed.len() as f64);
+    println!(
+        "compressed bytes : {} ({:.1}x smaller)",
+        compressed.len(),
+        json.len() as f64 / compressed.len() as f64
+    );
     println!("wrote snapshot to {}", path.display());
     Ok(())
 }

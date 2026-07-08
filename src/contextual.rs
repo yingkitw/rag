@@ -15,7 +15,12 @@ pub struct ContextualRetrieval {
 
 impl ContextualRetrieval {
     pub fn openai(api_key: String) -> Self {
-        Self { client: Client::new(), api_key, model: "gpt-4o-mini".to_string(), base_url: "https://api.openai.com/v1".to_string() }
+        Self {
+            client: Client::new(),
+            api_key,
+            model: "gpt-4o-mini".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+        }
     }
 
     pub fn with_model(mut self, model: String) -> Self {
@@ -60,23 +65,37 @@ impl ContextualRetrieval {
         );
         let req = ChatRequest {
             model: self.model.clone(),
-            messages: vec![Message { role: "user".to_string(), content: prompt }],
+            messages: vec![Message {
+                role: "user".to_string(),
+                content: prompt,
+            }],
         };
-        let resp = self.client
+        let resp = self
+            .client
             .post(format!("{}/chat/completions", self.base_url))
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&req)
-            .send().await?;
+            .send()
+            .await?;
         if !resp.status().is_success() {
             return Err(RagError::EmbeddingError(resp.text().await?));
         }
         let data: ChatResponse = resp.json().await?;
-        let text = data.choices.into_iter().next().map(|c| c.message.content).unwrap_or_default();
+        let text = data
+            .choices
+            .into_iter()
+            .next()
+            .map(|c| c.message.content)
+            .unwrap_or_default();
         Ok(text.trim().to_string())
     }
 
     /// Rewrite a batch of chunks with shared document context.
-    pub async fn rewrite_batch(&self, chunks: &[String], document_context: &str) -> Result<Vec<String>> {
+    pub async fn rewrite_batch(
+        &self,
+        chunks: &[String],
+        document_context: &str,
+    ) -> Result<Vec<String>> {
         let mut out = Vec::with_capacity(chunks.len());
         for chunk in chunks {
             out.push(self.rewrite(chunk, document_context).await?);

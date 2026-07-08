@@ -2,12 +2,12 @@ use crate::chunker::{ParagraphChunker, TextChunker};
 use crate::embeddings::EmbeddingModel;
 use crate::errors::Result;
 use crate::graph::{GraphEdge, GraphNode, GraphPersisted, GraphStore};
-use crate::vector_store::{load_all_documents, Document, InMemoryVectorStore, VectorStore};
-use dashmap::DashMap;
+use crate::vector_store::{Document, InMemoryVectorStore, VectorStore, load_all_documents};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::path::Path;
+use std::sync::RwLock;
 
 #[derive(Debug, Clone)]
 pub struct ExtractedEntity {
@@ -31,9 +31,7 @@ impl Default for SimpleEntityExtractor {
 
 impl SimpleEntityExtractor {
     pub fn new() -> Self {
-        Self {
-            min_word_length: 2,
-        }
+        Self { min_word_length: 2 }
     }
 }
 
@@ -234,11 +232,10 @@ fn extract_quoted_strings(text: &str) -> Vec<String> {
 fn extract_acronyms(text: &str) -> Vec<String> {
     let mut results = Vec::new();
     for word in text.split_whitespace() {
-        let cleaned: String = word
-            .chars()
-            .filter(|c| c.is_ascii_alphabetic())
-            .collect();
-        if cleaned.len() >= 2 && cleaned.len() <= 8 && cleaned.chars().all(|c| c.is_ascii_uppercase())
+        let cleaned: String = word.chars().filter(|c| c.is_ascii_alphabetic()).collect();
+        if cleaned.len() >= 2
+            && cleaned.len() <= 8
+            && cleaned.chars().all(|c| c.is_ascii_uppercase())
         {
             results.push(cleaned);
         }
@@ -251,11 +248,10 @@ fn extract_proper_nouns(text: &str) -> Vec<String> {
     let sentences: Vec<&str> = text.split(['.', '!', '?', '\n']).collect();
 
     let sentence_starters = [
-        "the", "a", "an", "this", "that", "it", "there", "here", "when", "where",
-        "how", "why", "what", "which", "who", "if", "but", "and", "or", "so",
-        "yet", "for", "as", "in", "on", "at", "by", "to", "from", "with",
-        "these", "those", "its", "his", "her", "my", "your", "our", "their",
-        "all", "some", "any", "each", "every", "no", "not",
+        "the", "a", "an", "this", "that", "it", "there", "here", "when", "where", "how", "why",
+        "what", "which", "who", "if", "but", "and", "or", "so", "yet", "for", "as", "in", "on",
+        "at", "by", "to", "from", "with", "these", "those", "its", "his", "her", "my", "your",
+        "our", "their", "all", "some", "any", "each", "every", "no", "not",
     ];
 
     for sentence in sentences {
@@ -275,8 +271,8 @@ fn extract_proper_nouns(text: &str) -> Vec<String> {
 
             let lower = word.to_lowercase();
             let lower_clean: String = lower.chars().filter(|c| c.is_alphabetic()).collect();
-            let is_stop = lower_clean.is_empty()
-                || sentence_starters.contains(&lower_clean.as_str());
+            let is_stop =
+                lower_clean.is_empty() || sentence_starters.contains(&lower_clean.as_str());
 
             let is_sentence_start = idx == 0;
 
@@ -325,8 +321,8 @@ where
     chunker: Box<dyn TextChunker>,
     top_k: usize,
     graph_depth: usize,
-    entity_chunks: DashMap<String, HashSet<String>>,
-    chunk_entities: DashMap<String, HashSet<String>>,
+    entity_chunks: RwLock<HashMap<String, HashSet<String>>>,
+    chunk_entities: RwLock<HashMap<String, HashSet<String>>>,
     /// Edge relation label between co-occurring entities in the same chunk.
     co_occurrence_relation: String,
 }
@@ -346,8 +342,8 @@ where
             chunker: Box::new(crate::chunker::ParagraphChunker),
             top_k: 5,
             graph_depth: 2,
-            entity_chunks: DashMap::new(),
-            chunk_entities: DashMap::new(),
+            entity_chunks: RwLock::new(HashMap::new()),
+            chunk_entities: RwLock::new(HashMap::new()),
             co_occurrence_relation: "co_occurs".to_string(),
         }
     }
@@ -399,8 +395,7 @@ where
                 let node = match self.graph.get_node_by_name(&entity.name) {
                     Some(existing) => existing,
                     None => {
-                        let node =
-                            GraphNode::new(entity.name.clone(), entity.label.clone());
+                        let node = GraphNode::new(entity.name.clone(), entity.label.clone());
                         let id = node.id.clone();
                         self.graph.add_node(node)?;
                         self.graph.get_node(&id).unwrap()
@@ -408,11 +403,15 @@ where
                 };
 
                 self.entity_chunks
+                    .write()
+                    .unwrap()
                     .entry(node.name.clone())
                     .or_default()
                     .insert(doc_id.clone());
 
                 self.chunk_entities
+                    .write()
+                    .unwrap()
                     .entry(doc_id.clone())
                     .or_default()
                     .insert(node.name.clone());
@@ -426,52 +425,29 @@ where
                         self.graph.get_node_by_name(&entity_names[i]),
                         self.graph.get_node_by_name(&entity_names[j]),
                     ) {
-                        let edge = GraphEdge::new(
-                            src.id.clone(),
-                            tgt.id.clone(),
-                            rel.to_string(),
-                        )
-                        .with_weight(1.0);
+                        let edge = GraphEdge::new(src.id.clone(), tgt.id.clone(), rel.to_string())
+                            .with_weight(1.0);
 
-                        if let Some(existing) = self
-                            .graph
-                            .find_edge(&src.id, &tgt.id, rel)
-                        {
+                        if let Some(existing) = self.graph.find_edge(&src.id, &tgt.id, rel) {
                             let new_weight = existing.weight + 1.0;
-                            let new_edge = GraphEdge::new(
-                                src.id.clone(),
-                                tgt.id.clone(),
-                                rel.to_string(),
-                            )
-                            .with_weight(new_weight);
+                            let new_edge =
+                                GraphEdge::new(src.id.clone(), tgt.id.clone(), rel.to_string())
+                                    .with_weight(new_weight);
                             self.graph.upsert_edge(new_edge)?;
                         } else {
                             self.graph.add_edge(edge)?;
                         }
 
-                        let edge_rev = GraphEdge::new(
-                            tgt.id.clone(),
-                            src.id.clone(),
-                            rel.to_string(),
-                        )
-                        .with_weight(1.0);
+                        let edge_rev =
+                            GraphEdge::new(tgt.id.clone(), src.id.clone(), rel.to_string())
+                                .with_weight(1.0);
 
-                        if self
-                            .graph
-                            .find_edge(&tgt.id, &src.id, rel)
-                            .is_none()
-                        {
-                            if let Some(existing) = self
-                                .graph
-                                .find_edge(&tgt.id, &src.id, rel)
-                            {
+                        if self.graph.find_edge(&tgt.id, &src.id, rel).is_none() {
+                            if let Some(existing) = self.graph.find_edge(&tgt.id, &src.id, rel) {
                                 let new_weight = existing.weight + 1.0;
-                                let new_edge = GraphEdge::new(
-                                    tgt.id.clone(),
-                                    src.id.clone(),
-                                    rel.to_string(),
-                                )
-                                .with_weight(new_weight);
+                                let new_edge =
+                                    GraphEdge::new(tgt.id.clone(), src.id.clone(), rel.to_string())
+                                        .with_weight(new_weight);
                                 self.graph.upsert_edge(new_edge)?;
                             } else {
                                 let _ = self.graph.add_edge(edge_rev);
@@ -502,15 +478,21 @@ where
             if let Some(node) = self.graph.get_node_by_name(&entity.name) {
                 let reachable = self.graph.bfs(&node.id, self.graph_depth);
                 for neighbor in reachable {
-                    if let Some(chunks) = self.entity_chunks.get(&neighbor.name) {
-                        for chunk_id in chunks.value().iter() {
+                    if let Some(chunks) = self
+                        .entity_chunks
+                        .read()
+                        .unwrap()
+                        .get(&neighbor.name)
+                        .cloned()
+                    {
+                        for chunk_id in chunks.iter() {
                             graph_chunk_ids.insert(chunk_id.clone());
                         }
                     }
                 }
 
-                if let Some(chunks) = self.entity_chunks.get(&node.name) {
-                    for chunk_id in chunks.value().iter() {
+                if let Some(chunks) = self.entity_chunks.read().unwrap().get(&node.name).cloned() {
+                    for chunk_id in chunks.iter() {
                         graph_chunk_ids.insert(chunk_id.clone());
                     }
                 }
@@ -524,8 +506,10 @@ where
             seen_ids.insert(sim.document.id.clone());
             let entities = self
                 .chunk_entities
+                .read()
+                .unwrap()
                 .get(&sim.document.id)
-                .map(|e| e.value().iter().cloned().collect::<Vec<_>>())
+                .map(|e| e.iter().cloned().collect::<Vec<_>>())
                 .unwrap_or_default();
 
             results.push(GraphRagResult {
@@ -542,8 +526,10 @@ where
             {
                 let entities = self
                     .chunk_entities
+                    .read()
+                    .unwrap()
                     .get(&chunk_id)
-                    .map(|e| e.value().iter().cloned().collect::<Vec<_>>())
+                    .map(|e| e.iter().cloned().collect::<Vec<_>>())
                     .unwrap_or_default();
 
                 results.push(GraphRagResult {
@@ -555,7 +541,11 @@ where
             }
         }
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(self.top_k);
 
         Ok(results)
@@ -575,8 +565,10 @@ where
         let neighbor_names: Vec<String> = neighbors.iter().map(|n| n.name.clone()).collect();
         let chunks = self
             .entity_chunks
+            .read()
+            .unwrap()
             .get(name)
-            .map(|e| e.value().len())
+            .map(|e| e.len())
             .unwrap_or(0);
 
         Some(EntityInfo {
@@ -607,13 +599,17 @@ where
         let docs = load_all_documents(&self.vector_store).await?;
         let entity_chunks: HashMap<String, Vec<String>> = self
             .entity_chunks
+            .read()
+            .unwrap()
             .iter()
-            .map(|e| (e.key().clone(), e.value().iter().cloned().collect()))
+            .map(|(k, v)| (k.clone(), v.iter().cloned().collect()))
             .collect();
         let chunk_entities: HashMap<String, Vec<String>> = self
             .chunk_entities
+            .read()
+            .unwrap()
             .iter()
-            .map(|e| (e.key().clone(), e.value().iter().cloned().collect()))
+            .map(|(k, v)| (k.clone(), v.iter().cloned().collect()))
             .collect();
         let snap = GraphRagSnapshot {
             format_version: 1,
@@ -686,14 +682,16 @@ impl<T: EmbeddingModel> GraphRagEngine<SimpleEntityExtractor, T, InMemoryVectorS
             store.add_batch(snap.documents).await?;
         }
         let graph = GraphStore::from_persisted(snap.graph)?;
-        let entity_chunks = DashMap::new();
-        for (k, v) in snap.entity_chunks {
-            entity_chunks.insert(k, v.into_iter().collect::<HashSet<_>>());
-        }
-        let chunk_entities = DashMap::new();
-        for (k, v) in snap.chunk_entities {
-            chunk_entities.insert(k, v.into_iter().collect::<HashSet<_>>());
-        }
+        let entity_chunks: HashMap<String, HashSet<String>> = snap
+            .entity_chunks
+            .into_iter()
+            .map(|(k, v)| (k, v.into_iter().collect()))
+            .collect();
+        let chunk_entities: HashMap<String, HashSet<String>> = snap
+            .chunk_entities
+            .into_iter()
+            .map(|(k, v)| (k, v.into_iter().collect()))
+            .collect();
         Ok(GraphRagEngine {
             entity_extractor: extractor,
             embedding_model,
@@ -702,8 +700,8 @@ impl<T: EmbeddingModel> GraphRagEngine<SimpleEntityExtractor, T, InMemoryVectorS
             chunker: Box::new(ParagraphChunker),
             top_k: snap.top_k,
             graph_depth: snap.graph_depth,
-            entity_chunks,
-            chunk_entities,
+            entity_chunks: RwLock::new(entity_chunks),
+            chunk_entities: RwLock::new(chunk_entities),
             co_occurrence_relation: snap.co_occurrence_relation,
         })
     }
@@ -715,7 +713,8 @@ mod tests {
 
     #[test]
     fn test_extract_quoted_strings() {
-        let text = r#"The concept of "GraphRAG" is related to 'knowledge graph' and `vector database`."#;
+        let text =
+            r#"The concept of "GraphRAG" is related to 'knowledge graph' and `vector database`."#;
         let results = extract_quoted_strings(text);
         assert_eq!(results.len(), 3);
         assert!(results.contains(&"GraphRAG".to_string()));
@@ -764,7 +763,9 @@ mod tests {
     #[tokio::test]
     async fn test_extract_no_entities() {
         let extractor = SimpleEntityExtractor::new();
-        let entities = extractor.extract_entities("the quick brown fox jumps over the lazy dog").await;
+        let entities = extractor
+            .extract_entities("the quick brown fox jumps over the lazy dog")
+            .await;
         assert!(entities.is_empty());
     }
 

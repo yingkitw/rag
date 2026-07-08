@@ -19,10 +19,22 @@ fn main() {
 
     // Simulate vector search results (high scores for semantic similarity)
     let vector_results = vec![
-        Similarity { document: docs[2].clone(), score: 0.92 }, // rust concurrency
-        Similarity { document: docs[0].clone(), score: 0.85 }, // rust systems
-        Similarity { document: docs[1].clone(), score: 0.40 }, // python
-        Similarity { document: docs[3].clone(), score: 0.30 }, // js
+        Similarity {
+            document: docs[2].clone(),
+            score: 0.92,
+        }, // rust concurrency
+        Similarity {
+            document: docs[0].clone(),
+            score: 0.85,
+        }, // rust systems
+        Similarity {
+            document: docs[1].clone(),
+            score: 0.40,
+        }, // python
+        Similarity {
+            document: docs[3].clone(),
+            score: 0.30,
+        }, // js
     ];
 
     // BM25 keyword search results (exact word matches)
@@ -32,7 +44,10 @@ fn main() {
         .into_iter()
         .map(|(id, score)| {
             let doc = docs.iter().find(|d| d.id == id).unwrap().clone();
-            Similarity { document: doc, score }
+            Similarity {
+                document: doc,
+                score,
+            }
         })
         .collect();
 

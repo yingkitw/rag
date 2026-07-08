@@ -1,17 +1,17 @@
 use crate::index::{DistanceMetric, Index};
 use crate::vector_store::{Document, Similarity};
-use dashmap::{DashMap, DashSet};
 use hnsw_rs::prelude::*;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 /// Approximate nearest neighbor index using HNSW (Hierarchical Navigable Small World).
 /// Provides fast search for large datasets at the cost of exact recall.
 pub struct HnswIndex {
-    documents: DashMap<String, Arc<Document>>,
-    id_map: DashMap<String, usize>,
-    reverse_id_map: DashMap<usize, String>,
-    deleted_ids: DashSet<usize>,
+    documents: RwLock<HashMap<String, Arc<Document>>>,
+    id_map: RwLock<HashMap<String, usize>>,
+    reverse_id_map: RwLock<HashMap<usize, String>>,
+    deleted_ids: RwLock<HashSet<usize>>,
     hnsw: Mutex<Option<Hnsw<'static, f32, DistFn<f32>>>>,
     next_id: AtomicUsize,
     metric: DistanceMetric,
@@ -22,10 +22,10 @@ pub struct HnswIndex {
 impl HnswIndex {
     pub fn new() -> Self {
         Self {
-            documents: DashMap::new(),
-            id_map: DashMap::new(),
-            reverse_id_map: DashMap::new(),
-            deleted_ids: DashSet::new(),
+            documents: RwLock::new(HashMap::new()),
+            id_map: RwLock::new(HashMap::new()),
+            reverse_id_map: RwLock::new(HashMap::new()),
+            deleted_ids: RwLock::new(HashSet::new()),
             hnsw: Mutex::new(None),
             next_id: AtomicUsize::new(0),
             metric: DistanceMetric::default(),
@@ -36,10 +36,10 @@ impl HnswIndex {
 
     pub fn with_metric(metric: DistanceMetric) -> Self {
         Self {
-            documents: DashMap::new(),
-            id_map: DashMap::new(),
-            reverse_id_map: DashMap::new(),
-            deleted_ids: DashSet::new(),
+            documents: RwLock::new(HashMap::new()),
+            id_map: RwLock::new(HashMap::new()),
+            reverse_id_map: RwLock::new(HashMap::new()),
+            deleted_ids: RwLock::new(HashSet::new()),
             hnsw: Mutex::new(None),
             next_id: AtomicUsize::new(0),
             metric,
@@ -50,10 +50,10 @@ impl HnswIndex {
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            documents: DashMap::new(),
-            id_map: DashMap::new(),
-            reverse_id_map: DashMap::new(),
-            deleted_ids: DashSet::new(),
+            documents: RwLock::new(HashMap::new()),
+            id_map: RwLock::new(HashMap::new()),
+            reverse_id_map: RwLock::new(HashMap::new()),
+            deleted_ids: RwLock::new(HashSet::new()),
             hnsw: Mutex::new(None),
             next_id: AtomicUsize::new(0),
             metric: DistanceMetric::default(),
@@ -75,13 +75,12 @@ impl HnswIndex {
                         1.0 - dot / (norm_a * norm_b)
                     }
                 }
-                DistanceMetric::Euclidean => {
-                    a.iter()
-                        .zip(b.iter())
-                        .map(|(x, y)| (x - y) * (x - y))
-                        .sum::<f32>()
-                        .sqrt()
-                }
+                DistanceMetric::Euclidean => a
+                    .iter()
+                    .zip(b.iter())
+                    .map(|(x, y)| (x - y) * (x - y))
+                    .sum::<f32>()
+                    .sqrt(),
                 DistanceMetric::DotProduct => {
                     -a.iter().zip(b.iter()).map(|(x, y)| x * y).sum::<f32>()
                 }
@@ -133,16 +132,32 @@ impl Default for HnswIndex {
 impl Index for HnswIndex {
     fn add(&self, document: Document) {
         let doc_id = document.id.clone();
-        self.documents.insert(doc_id.clone(), Arc::new(document));
+        self.documents
+            .write()
+            .unwrap()
+            .insert(doc_id.clone(), Arc::new(document));
 
-        if let Some(embedding) = &self.documents.get(&doc_id).unwrap().embedding {
+        let embedding = self
+            .documents
+            .read()
+            .unwrap()
+            .get(&doc_id)
+            .and_then(|d| d.embedding.clone());
+
+        if let Some(embedding) = embedding {
             let dim = embedding.len();
             self.ensure_hnsw(dim);
 
             let numeric_id = self.next_id.fetch_add(1, Ordering::SeqCst);
-            self.id_map.insert(doc_id.clone(), numeric_id);
-            self.reverse_id_map.insert(numeric_id, doc_id);
-            self.deleted_ids.remove(&numeric_id);
+            self.id_map
+                .write()
+                .unwrap()
+                .insert(doc_id.clone(), numeric_id);
+            self.reverse_id_map
+                .write()
+                .unwrap()
+                .insert(numeric_id, doc_id);
+            self.deleted_ids.write().unwrap().remove(&numeric_id);
 
             let guard = self.hnsw.lock().unwrap();
             if let Some(ref hnsw) = *guard {
@@ -152,10 +167,10 @@ impl Index for HnswIndex {
     }
 
     fn remove(&self, id: &str) -> bool {
-        if let Some((_, numeric_id)) = self.id_map.remove(id) {
-            self.deleted_ids.insert(numeric_id);
-            self.documents.remove(id);
-            self.reverse_id_map.remove(&numeric_id);
+        if let Some(numeric_id) = self.id_map.write().unwrap().remove(id) {
+            self.deleted_ids.write().unwrap().insert(numeric_id);
+            self.documents.write().unwrap().remove(id);
+            self.reverse_id_map.write().unwrap().remove(&numeric_id);
             true
         } else {
             false
@@ -179,19 +194,26 @@ impl Index for HnswIndex {
         let mut results = Vec::new();
         for neighbour in neighbours {
             let numeric_id = neighbour.get_origin_id();
-            if self.deleted_ids.contains(&numeric_id) {
+            if self.deleted_ids.read().unwrap().contains(&numeric_id) {
                 continue;
             }
-            if let Some(entry) = self.reverse_id_map.get(&numeric_id) {
-                let doc_id = entry.value();
-                if let Some(doc_entry) = self.documents.get(doc_id) {
-                    let distance = neighbour.get_distance();
-                    let score = self.distance_to_similarity(distance);
-                    results.push(Similarity {
-                        document: doc_entry.value().as_ref().clone(),
-                        score,
-                    });
-                }
+            let doc_id = self
+                .reverse_id_map
+                .read()
+                .unwrap()
+                .get(&numeric_id)
+                .cloned();
+            let Some(doc_id) = doc_id else {
+                continue;
+            };
+            let doc = self.documents.read().unwrap().get(&doc_id).cloned();
+            if let Some(doc) = doc {
+                let distance = neighbour.get_distance();
+                let score = self.distance_to_similarity(distance);
+                results.push(Similarity {
+                    document: (*doc).clone(),
+                    score,
+                });
             }
         }
 
@@ -210,11 +232,10 @@ impl Index for HnswIndex {
         top_k: usize,
         filter: &dyn Fn(&Document) -> bool,
     ) -> Vec<Similarity> {
-        let mut similarities: Vec<Similarity> = self
-            .documents
-            .iter()
-            .filter_map(|entry| {
-                let doc = entry.value();
+        let docs = self.documents.read().unwrap();
+        let mut similarities: Vec<Similarity> = docs
+            .values()
+            .filter_map(|doc| {
                 if !filter(doc) {
                     return None;
                 }
@@ -222,13 +243,21 @@ impl Index for HnswIndex {
                     let score = self.distance_to_similarity(
                         Self::make_dist_fn(self.metric).eval(query, embedding),
                     );
-                    Some(Similarity { document: (**doc).clone(), score })
+                    Some(Similarity {
+                        document: (**doc).clone(),
+                        score,
+                    })
                 } else {
                     None
                 }
             })
             .collect();
-        similarities.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        drop(docs);
+        similarities.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         similarities.truncate(top_k);
         similarities
     }
@@ -241,16 +270,16 @@ impl Index for HnswIndex {
         let mut guard = self.hnsw.lock().unwrap();
         *guard = None;
         drop(guard);
-        self.documents.clear();
-        self.id_map.clear();
-        self.reverse_id_map.clear();
-        self.deleted_ids.clear();
+        self.documents.write().unwrap().clear();
+        self.id_map.write().unwrap().clear();
+        self.reverse_id_map.write().unwrap().clear();
+        self.deleted_ids.write().unwrap().clear();
         self.next_id.store(0, Ordering::SeqCst);
         self.dimension.store(0, Ordering::SeqCst);
     }
 
     fn len(&self) -> usize {
-        self.documents.len()
+        self.documents.read().unwrap().len()
     }
 
     fn dimension(&self) -> Option<usize> {

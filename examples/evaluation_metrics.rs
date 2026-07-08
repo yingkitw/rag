@@ -23,10 +23,24 @@ fn main() {
     let k = 3;
     println!("Relevant: {:?}", relevant);
     println!("Retrieved: {:?}", retrieved);
-    println!("Recall@{}    = {:.3}", k, recall_at_k(&retrieved, &relevant, k));
-    println!("Precision@{} = {:.3}", k, precision_at_k(&retrieved, &relevant, k));
-    println!("MRR          = {:.3}", reciprocal_rank(&retrieved, &relevant));
-    println!("MAP          = {:.3}", average_precision(&retrieved, &relevant));
+    println!(
+        "Recall@{}    = {:.3}",
+        k,
+        recall_at_k(&retrieved, &relevant, k)
+    );
+    println!(
+        "Precision@{} = {:.3}",
+        k,
+        precision_at_k(&retrieved, &relevant, k)
+    );
+    println!(
+        "MRR          = {:.3}",
+        reciprocal_rank(&retrieved, &relevant)
+    );
+    println!(
+        "MAP          = {:.3}",
+        average_precision(&retrieved, &relevant)
+    );
 
     // Graded-relevance NDCG: retrieved items carry grades 0..3.
     let grades = vec![3.0, 0.0, 2.0, 0.0, 1.0];

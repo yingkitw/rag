@@ -39,7 +39,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== All Documents ===");
     let all_docs = vector_store.list(10, 0).await?;
     for (i, doc) in all_docs.iter().enumerate() {
-        println!("{}. {} ({})", i + 1, doc.content, doc.metadata.get("category").unwrap_or(&"?".to_string()));
+        println!(
+            "{}. {} ({})",
+            i + 1,
+            doc.content,
+            doc.metadata.get("category").unwrap_or(&"?".to_string())
+        );
     }
     println!();
 
@@ -48,7 +53,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Search without filter ===");
     let results = vector_store.search(&query, 3).await?;
     for (i, result) in results.iter().enumerate() {
-        println!("{}. {:.3} - {}", i + 1, result.score, result.document.content);
+        println!(
+            "{}. {:.3} - {}",
+            i + 1,
+            result.score,
+            result.document.content
+        );
     }
     println!();
 
@@ -56,7 +66,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let filter = MetadataFilter::new().add("category".to_string(), "AI".to_string());
     let results = vector_store.search_with_filter(&query, 3, &filter).await?;
     for (i, result) in results.iter().enumerate() {
-        println!("{}. {:.3} - {}", i + 1, result.score, result.document.content);
+        println!(
+            "{}. {:.3} - {}",
+            i + 1,
+            result.score,
+            result.document.content
+        );
     }
     println!();
 
@@ -64,7 +79,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let filter = MetadataFilter::new().add("language".to_string(), "Python".to_string());
     let results = vector_store.search_with_filter(&query, 3, &filter).await?;
     for (i, result) in results.iter().enumerate() {
-        println!("{}. {:.3} - {}", i + 1, result.score, result.document.content);
+        println!(
+            "{}. {:.3} - {}",
+            i + 1,
+            result.score,
+            result.document.content
+        );
     }
     println!();
 
@@ -85,7 +105,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("After batch add, total documents: {}\n", count);
 
     println!("=== Persistence (Save to file) ===");
-    vector_store.save_to_file("vector_store_backup.json").await?;
+    vector_store
+        .save_to_file("vector_store_backup.json")
+        .await?;
     println!("Saved vector store to vector_store_backup.json\n");
 
     println!("=== Load from file ===");

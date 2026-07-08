@@ -95,7 +95,11 @@ pub trait VectorStore: Send + Sync {
         top_k: usize,
         filter: &MetadataFilter,
     ) -> Result<Vec<Similarity>>;
-    async fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Result<Vec<Vec<Similarity>>>;
+    async fn search_batch(
+        &self,
+        queries: &[Vec<f32>],
+        top_k: usize,
+    ) -> Result<Vec<Vec<Similarity>>>;
     async fn get(&self, id: &str) -> Result<Option<Document>>;
     async fn delete(&self, id: &str) -> Result<bool>;
     async fn delete_batch(&self, ids: Vec<String>) -> Result<usize>;
@@ -113,7 +117,7 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 
 pub struct InMemoryVectorStore {
     index: FlatIndex,
-    documents: dashmap::DashMap<String, Document>,
+    documents: RwLock<HashMap<String, Document>>,
 }
 
 impl Default for InMemoryVectorStore {
@@ -126,26 +130,26 @@ impl InMemoryVectorStore {
     pub fn new() -> Self {
         Self {
             index: FlatIndex::new(),
-            documents: dashmap::DashMap::new(),
+            documents: RwLock::new(HashMap::new()),
         }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             index: FlatIndex::with_capacity(capacity),
-            documents: dashmap::DashMap::with_capacity(capacity),
+            documents: RwLock::new(HashMap::with_capacity(capacity)),
         }
     }
 
     pub fn with_metric(metric: DistanceMetric) -> Self {
         Self {
             index: FlatIndex::with_metric(metric),
-            documents: dashmap::DashMap::new(),
+            documents: RwLock::new(HashMap::new()),
         }
     }
 
     pub async fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        let docs_vec: Vec<Document> = self.documents.iter().map(|entry| entry.value().clone()).collect();
+        let docs_vec: Vec<Document> = self.documents.read().unwrap().values().cloned().collect();
 
         let file = File::create(path)?;
         let writer = BufWriter::new(file);
@@ -161,7 +165,7 @@ impl InMemoryVectorStore {
         let store = Self::new();
         for doc in docs_vec {
             store.index.add(doc.clone());
-            store.documents.insert(doc.id.clone(), doc);
+            store.documents.write().unwrap().insert(doc.id.clone(), doc);
         }
 
         Ok(store)
@@ -172,15 +176,16 @@ impl VectorStore for InMemoryVectorStore {
     async fn add(&self, document: Document) -> Result<()> {
         let id = document.id.clone();
         self.index.add(document.clone());
-        self.documents.insert(id, document);
+        self.documents.write().unwrap().insert(id, document);
         Ok(())
     }
 
     async fn add_batch(&self, documents: Vec<Document>) -> Result<()> {
+        let mut docs = self.documents.write().unwrap();
         for doc in documents {
             let id = doc.id.clone();
             self.index.add(doc.clone());
-            self.documents.insert(id, doc);
+            docs.insert(id, doc);
         }
         Ok(())
     }
@@ -200,16 +205,20 @@ impl VectorStore for InMemoryVectorStore {
             .search_exact_filtered(query, top_k, &|doc| filter.matches(&doc.metadata)))
     }
 
-    async fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Result<Vec<Vec<Similarity>>> {
+    async fn search_batch(
+        &self,
+        queries: &[Vec<f32>],
+        top_k: usize,
+    ) -> Result<Vec<Vec<Similarity>>> {
         Ok(self.index.search_batch(queries, top_k))
     }
 
     async fn get(&self, id: &str) -> Result<Option<Document>> {
-        Ok(self.documents.get(id).map(|entry| entry.value().clone()))
+        Ok(self.documents.read().unwrap().get(id).cloned())
     }
 
     async fn delete(&self, id: &str) -> Result<bool> {
-        let removed = self.documents.remove(id).is_some();
+        let removed = self.documents.write().unwrap().remove(id).is_some();
         if removed {
             self.index.remove(id);
         }
@@ -219,7 +228,7 @@ impl VectorStore for InMemoryVectorStore {
     async fn delete_batch(&self, ids: Vec<String>) -> Result<usize> {
         let mut count = 0;
         for id in ids {
-            if self.documents.remove(&id).is_some() {
+            if self.documents.write().unwrap().remove(&id).is_some() {
                 self.index.remove(&id);
                 count += 1;
             }
@@ -228,7 +237,7 @@ impl VectorStore for InMemoryVectorStore {
     }
 
     async fn clear(&self) -> Result<()> {
-        self.documents.clear();
+        self.documents.write().unwrap().clear();
         self.index.clear();
         Ok(())
     }
@@ -236,15 +245,17 @@ impl VectorStore for InMemoryVectorStore {
     async fn list(&self, limit: usize, offset: usize) -> Result<Vec<Document>> {
         Ok(self
             .documents
-            .iter()
+            .read()
+            .unwrap()
+            .values()
             .skip(offset)
             .take(limit)
-            .map(|entry| entry.value().clone())
+            .cloned()
             .collect())
     }
 
     async fn count(&self) -> Result<usize> {
-        Ok(self.documents.len())
+        Ok(self.documents.read().unwrap().len())
     }
 
     fn metric(&self) -> DistanceMetric {
@@ -334,7 +345,8 @@ impl VectorStore for MinimalVectorDB {
     }
 
     async fn search(&self, query: &[f32], top_k: usize) -> Result<Vec<Similarity>> {
-        self.search_with_filter(query, top_k, &MetadataFilter::new()).await
+        self.search_with_filter(query, top_k, &MetadataFilter::new())
+            .await
     }
 
     async fn search_with_filter(
@@ -352,7 +364,11 @@ impl VectorStore for MinimalVectorDB {
         Ok(filtered)
     }
 
-    async fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Result<Vec<Vec<Similarity>>> {
+    async fn search_batch(
+        &self,
+        queries: &[Vec<f32>],
+        top_k: usize,
+    ) -> Result<Vec<Vec<Similarity>>> {
         Ok(self.index.search_batch(queries, top_k))
     }
 
@@ -396,12 +412,7 @@ impl VectorStore for MinimalVectorDB {
 
     async fn list(&self, limit: usize, offset: usize) -> Result<Vec<Document>> {
         let docs = self.documents.read().unwrap();
-        Ok(docs
-            .values()
-            .skip(offset)
-            .take(limit)
-            .cloned()
-            .collect())
+        Ok(docs.values().skip(offset).take(limit).cloned().collect())
     }
 
     async fn count(&self) -> Result<usize> {
@@ -439,7 +450,11 @@ impl JsonPersistentVectorStore {
         } else {
             InMemoryVectorStore::new()
         };
-        Ok(Self { path, inner, auto_flush: true })
+        Ok(Self {
+            path,
+            inner,
+            auto_flush: true,
+        })
     }
 
     pub async fn open_with_metric<P: AsRef<Path>>(path: P, metric: DistanceMetric) -> Result<Self> {
@@ -449,7 +464,11 @@ impl JsonPersistentVectorStore {
         } else {
             InMemoryVectorStore::with_metric(metric)
         };
-        Ok(Self { path, inner, auto_flush: true })
+        Ok(Self {
+            path,
+            inner,
+            auto_flush: true,
+        })
     }
 
     /// Open without auto-flushing. Call [`flush`](Self::flush) manually or on drop.
@@ -460,7 +479,11 @@ impl JsonPersistentVectorStore {
         } else {
             InMemoryVectorStore::new()
         };
-        Ok(Self { path, inner, auto_flush: false })
+        Ok(Self {
+            path,
+            inner,
+            auto_flush: false,
+        })
     }
 
     pub async fn flush(&self) -> Result<()> {
@@ -475,12 +498,20 @@ impl JsonPersistentVectorStore {
 impl VectorStore for JsonPersistentVectorStore {
     async fn add(&self, document: Document) -> Result<()> {
         self.inner.add(document).await?;
-        if self.auto_flush { self.flush().await } else { Ok(()) }
+        if self.auto_flush {
+            self.flush().await
+        } else {
+            Ok(())
+        }
     }
 
     async fn add_batch(&self, documents: Vec<Document>) -> Result<()> {
         self.inner.add_batch(documents).await?;
-        if self.auto_flush { self.flush().await } else { Ok(()) }
+        if self.auto_flush {
+            self.flush().await
+        } else {
+            Ok(())
+        }
     }
 
     async fn search(&self, query: &[f32], top_k: usize) -> Result<Vec<Similarity>> {
@@ -496,7 +527,11 @@ impl VectorStore for JsonPersistentVectorStore {
         self.inner.search_with_filter(query, top_k, filter).await
     }
 
-    async fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Result<Vec<Vec<Similarity>>> {
+    async fn search_batch(
+        &self,
+        queries: &[Vec<f32>],
+        top_k: usize,
+    ) -> Result<Vec<Vec<Similarity>>> {
         self.inner.search_batch(queries, top_k).await
     }
 
@@ -522,7 +557,11 @@ impl VectorStore for JsonPersistentVectorStore {
 
     async fn clear(&self) -> Result<()> {
         self.inner.clear().await?;
-        if self.auto_flush { self.flush().await } else { Ok(()) }
+        if self.auto_flush {
+            self.flush().await
+        } else {
+            Ok(())
+        }
     }
 
     async fn list(&self, limit: usize, offset: usize) -> Result<Vec<Document>> {

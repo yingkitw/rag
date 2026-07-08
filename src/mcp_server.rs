@@ -1,5 +1,5 @@
-use rmcp::{ServiceExt, transport::stdio};
 use rag::mcp::RagMcpServer;
+use rmcp::{ServiceExt, transport::stdio};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

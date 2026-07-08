@@ -53,12 +53,24 @@ fn rrf_fusion_combines_rankings() {
     let d3 = Document::new("third doc".to_string());
 
     let list1 = vec![
-        Similarity { document: d1.clone(), score: 0.9 },
-        Similarity { document: d2.clone(), score: 0.8 },
+        Similarity {
+            document: d1.clone(),
+            score: 0.9,
+        },
+        Similarity {
+            document: d2.clone(),
+            score: 0.8,
+        },
     ];
     let list2 = vec![
-        Similarity { document: d3.clone(), score: 0.95 },
-        Similarity { document: d1.clone(), score: 0.7 },
+        Similarity {
+            document: d3.clone(),
+            score: 0.95,
+        },
+        Similarity {
+            document: d1.clone(),
+            score: 0.7,
+        },
     ];
 
     let fused = rrf_fusion(&[list1, list2], 60, 10);
@@ -76,7 +88,14 @@ fn rrf_fusion_empty_input() {
 #[test]
 fn rrf_fusion_single_list() {
     let d = Document::new("only".to_string());
-    let fused = rrf_fusion(&[vec![Similarity { document: d, score: 1.0 }]], 60, 10);
+    let fused = rrf_fusion(
+        &[vec![Similarity {
+            document: d,
+            score: 1.0,
+        }]],
+        60,
+        10,
+    );
     assert_eq!(fused.len(), 1);
 }
 
@@ -142,18 +161,19 @@ fn bm25_prefix_search() {
 #[test]
 fn field_bm25_ranks_by_boost() {
     let mut d1 = Document::new("content1".to_string());
-    d1.metadata.insert("title".to_string(), "rust systems".to_string());
-    d1.metadata.insert("body".to_string(), "some text".to_string());
+    d1.metadata
+        .insert("title".to_string(), "rust systems".to_string());
+    d1.metadata
+        .insert("body".to_string(), "some text".to_string());
 
     let mut d2 = Document::new("content2".to_string());
-    d2.metadata.insert("title".to_string(), "other topic".to_string());
-    d2.metadata.insert("body".to_string(), "rust systems deep dive".to_string());
+    d2.metadata
+        .insert("title".to_string(), "other topic".to_string());
+    d2.metadata
+        .insert("body".to_string(), "rust systems deep dive".to_string());
 
     let docs = vec![d1, d2];
-    let mut idx = FieldBm25Index::new(vec![
-        ("title".to_string(), 3.0),
-        ("body".to_string(), 1.0),
-    ]);
+    let mut idx = FieldBm25Index::new(vec![("title".to_string(), 3.0), ("body".to_string(), 1.0)]);
     idx.build(&docs).unwrap();
 
     let hits = idx.search("rust systems", 2);
@@ -168,7 +188,9 @@ async fn lazy_flush_no_file_write_until_explicit() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("vectors.json");
 
-    let store = JsonPersistentVectorStore::open_lazy_flush(&path).await.unwrap();
+    let store = JsonPersistentVectorStore::open_lazy_flush(&path)
+        .await
+        .unwrap();
     let doc = Document::new("hello".to_string()).with_embedding(vec![1.0, 0.0]);
     store.add(doc).await.unwrap();
 
@@ -185,7 +207,9 @@ async fn lazy_flush_reload() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("vectors.json");
 
-    let store = JsonPersistentVectorStore::open_lazy_flush(&path).await.unwrap();
+    let store = JsonPersistentVectorStore::open_lazy_flush(&path)
+        .await
+        .unwrap();
     let doc = Document::new("persist me".to_string()).with_embedding(vec![0.5, 0.5]);
     store.add(doc.clone()).await.unwrap();
     store.flush().await.unwrap();
@@ -203,12 +227,18 @@ fn diversify_limits_per_source() {
     for i in 0..5 {
         let mut doc = Document::new(format!("doc {}", i));
         doc.metadata.insert("source".to_string(), "A".to_string());
-        docs.push(Similarity { document: doc, score: 1.0 - i as f32 * 0.1 });
+        docs.push(Similarity {
+            document: doc,
+            score: 1.0 - i as f32 * 0.1,
+        });
     }
     for i in 0..3 {
         let mut doc = Document::new(format!("doc b{}", i));
         doc.metadata.insert("source".to_string(), "B".to_string());
-        docs.push(Similarity { document: doc, score: 0.5 - i as f32 * 0.05 });
+        docs.push(Similarity {
+            document: doc,
+            score: 0.5 - i as f32 * 0.05,
+        });
     }
 
     let out = diversify(docs, "source", 2, 10);
@@ -217,7 +247,10 @@ fn diversify_limits_per_source() {
 
 #[test]
 fn diversify_zero_max_returns_empty() {
-    let docs = vec![Similarity { document: Document::new("a".to_string()), score: 1.0 }];
+    let docs = vec![Similarity {
+        document: Document::new("a".to_string()),
+        score: 1.0,
+    }];
     let out = diversify(docs, "source", 0, 10);
     assert!(out.is_empty());
 }
@@ -271,9 +304,18 @@ fn sum_by_numeric_metadata() {
 #[test]
 fn sparse_vector_search_integration() {
     let mut idx = SparseIndex::new();
-    idx.add("doc1".to_string(), SparseVector::new().insert(0, 1.0).insert(2, 0.5));
-    idx.add("doc2".to_string(), SparseVector::new().insert(1, 1.0).insert(2, 0.3));
-    idx.add("doc3".to_string(), SparseVector::new().insert(0, 0.8).insert(2, 0.6));
+    idx.add(
+        "doc1".to_string(),
+        SparseVector::new().insert(0, 1.0).insert(2, 0.5),
+    );
+    idx.add(
+        "doc2".to_string(),
+        SparseVector::new().insert(1, 1.0).insert(2, 0.3),
+    );
+    idx.add(
+        "doc3".to_string(),
+        SparseVector::new().insert(0, 0.8).insert(2, 0.6),
+    );
 
     let results = idx.search(&SparseVector::new().insert(0, 1.0).insert(2, 0.5), 2);
     assert!(!results.is_empty());

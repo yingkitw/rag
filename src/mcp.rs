@@ -1,14 +1,9 @@
-use std::collections::HashSet;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, RwLock};
 
-use dashmap::DashMap;
 use rmcp::{
-    ErrorData as McpError,
-    handler::server::wrapper::Parameters,
-    model::*,
-    schemars::JsonSchema,
-    tool, tool_handler, tool_router,
-    ServerHandler
+    ErrorData as McpError, ServerHandler, handler::server::wrapper::Parameters, model::*,
+    schemars::JsonSchema, tool, tool_handler, tool_router,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -93,9 +88,7 @@ fn tool_result(json_value: serde_json::Value) -> CallToolResult {
 }
 
 fn tool_error(message: &str) -> CallToolResult {
-    CallToolResult::error(vec![Content::text(
-        json!({ "error": message }).to_string(),
-    )])
+    CallToolResult::error(vec![Content::text(json!({ "error": message }).to_string())])
 }
 
 #[derive(Clone)]
@@ -104,8 +97,8 @@ pub struct RagMcpServer {
     graph: Arc<GraphStore>,
     embedding: Arc<EmbeddingBackend>,
     extractor: Arc<SimpleEntityExtractor>,
-    entity_chunks: Arc<DashMap<String, HashSet<String>>>,
-    chunk_entities: Arc<DashMap<String, HashSet<String>>>,
+    entity_chunks: Arc<RwLock<HashMap<String, HashSet<String>>>>,
+    chunk_entities: Arc<RwLock<HashMap<String, HashSet<String>>>>,
     top_k: usize,
 }
 
@@ -116,8 +109,8 @@ impl RagMcpServer {
             graph: Arc::new(GraphStore::new()),
             embedding: Arc::new(EmbeddingBackend::OpenAI(OpenAIEmbeddingModel::new(api_key))),
             extractor: Arc::new(SimpleEntityExtractor::new()),
-            entity_chunks: Arc::new(DashMap::new()),
-            chunk_entities: Arc::new(DashMap::new()),
+            entity_chunks: Arc::new(RwLock::new(HashMap::new())),
+            chunk_entities: Arc::new(RwLock::new(HashMap::new())),
             top_k: 5,
         }
     }
@@ -132,8 +125,8 @@ impl RagMcpServer {
             graph: Arc::new(GraphStore::new()),
             embedding: Arc::new(EmbeddingBackend::Ollama(ollama)),
             extractor: Arc::new(SimpleEntityExtractor::new()),
-            entity_chunks: Arc::new(DashMap::new()),
-            chunk_entities: Arc::new(DashMap::new()),
+            entity_chunks: Arc::new(RwLock::new(HashMap::new())),
+            chunk_entities: Arc::new(RwLock::new(HashMap::new())),
             top_k: 5,
         }
     }
@@ -190,15 +183,20 @@ impl RagMcpServer {
 
 #[tool_router]
 impl RagMcpServer {
-    #[tool(description = "Add a document to the RAG vector store. The document will be chunked, embedded, and indexed for later retrieval.")]
+    #[tool(
+        description = "Add a document to the RAG vector store. The document will be chunked, embedded, and indexed for later retrieval."
+    )]
     async fn rag_add_document(
         &self,
         Parameters(params): Parameters<AddDocumentParams>,
     ) -> Result<CallToolResult, McpError> {
         let chunker = ParagraphChunker;
-        let chunks: Vec<String> = chunker.chunk(&params.content).map_err(|e: crate::errors::RagError| {
-            McpError::internal_error("chunk_error", Some(json!({"error": e.to_string()})))
-        })?;
+        let chunks: Vec<String> =
+            chunker
+                .chunk(&params.content)
+                .map_err(|e: crate::errors::RagError| {
+                    McpError::internal_error("chunk_error", Some(json!({"error": e.to_string()})))
+                })?;
 
         let embeddings = self.embedding.embed(chunks.clone()).await.map_err(|e| {
             McpError::internal_error("embedding_error", Some(json!({"error": e.to_string()})))
@@ -224,7 +222,9 @@ impl RagMcpServer {
         })))
     }
 
-    #[tool(description = "Query the RAG vector store for semantically similar documents. Returns the top-k most relevant chunks with similarity scores.")]
+    #[tool(
+        description = "Query the RAG vector store for semantically similar documents. Returns the top-k most relevant chunks with similarity scores."
+    )]
     async fn rag_query(
         &self,
         Parameters(params): Parameters<QueryParams>,
@@ -235,10 +235,7 @@ impl RagMcpServer {
             .embed_single(&params.query)
             .await
             .map_err(|e| {
-                McpError::internal_error(
-                    "embedding_error",
-                    Some(json!({"error": e.to_string()})),
-                )
+                McpError::internal_error("embedding_error", Some(json!({"error": e.to_string()})))
             })?;
 
         let results = self
@@ -246,10 +243,7 @@ impl RagMcpServer {
             .search(&query_embedding, top_k)
             .await
             .map_err(|e| {
-                McpError::internal_error(
-                    "search_error",
-                    Some(json!({"error": e.to_string()})),
-                )
+                McpError::internal_error("search_error", Some(json!({"error": e.to_string()})))
             })?;
 
         let results_json: Vec<serde_json::Value> = results
@@ -279,13 +273,9 @@ impl RagMcpServer {
         let limit = params.limit.unwrap_or(10);
         let offset = params.offset.unwrap_or(0);
 
-        let documents = self
-            .store
-            .list(limit, offset)
-            .await
-            .map_err(|e| {
-                McpError::internal_error("list_error", Some(json!({"error": e.to_string()})))
-            })?;
+        let documents = self.store.list(limit, offset).await.map_err(|e| {
+            McpError::internal_error("list_error", Some(json!({"error": e.to_string()})))
+        })?;
         let total = self.store.count().await.map_err(|e| {
             McpError::internal_error("count_error", Some(json!({"error": e.to_string()})))
         })?;
@@ -316,15 +306,20 @@ impl RagMcpServer {
         Ok(tool_result(json!({ "total_chunks": count })))
     }
 
-    #[tool(description = "Build a knowledge graph from a document. Extracts entities (proper nouns, acronyms, quoted terms) and creates co-occurrence relationships between entities found in the same chunk.")]
+    #[tool(
+        description = "Build a knowledge graph from a document. Extracts entities (proper nouns, acronyms, quoted terms) and creates co-occurrence relationships between entities found in the same chunk."
+    )]
     async fn graph_build(
         &self,
         Parameters(params): Parameters<AddDocumentParams>,
     ) -> Result<CallToolResult, McpError> {
         let chunker = ParagraphChunker;
-        let chunks: Vec<String> = chunker.chunk(&params.content).map_err(|e: crate::errors::RagError| {
-            McpError::internal_error("chunk_error", Some(json!({"error": e.to_string()})))
-        })?;
+        let chunks: Vec<String> =
+            chunker
+                .chunk(&params.content)
+                .map_err(|e: crate::errors::RagError| {
+                    McpError::internal_error("chunk_error", Some(json!({"error": e.to_string()})))
+                })?;
 
         let embeddings = self.embedding.embed(chunks.clone()).await.map_err(|e| {
             McpError::internal_error("embedding_error", Some(json!({"error": e.to_string()})))
@@ -348,8 +343,7 @@ impl RagMcpServer {
                 }
             }
 
-            let mut doc =
-                crate::vector_store::Document::new(chunk_text).with_embedding(embedding);
+            let mut doc = crate::vector_store::Document::new(chunk_text).with_embedding(embedding);
             if let Some(ref source) = params.source {
                 doc = doc.with_metadata("source".to_string(), source.clone());
             }
@@ -358,11 +352,15 @@ impl RagMcpServer {
 
             for name in &entity_names {
                 self.entity_chunks
+                    .write()
+                    .unwrap()
                     .entry(name.clone())
                     .or_default()
                     .insert(id.clone());
 
                 self.chunk_entities
+                    .write()
+                    .unwrap()
                     .entry(id.clone())
                     .or_default()
                     .insert(name.clone());
@@ -390,7 +388,9 @@ impl RagMcpServer {
         })))
     }
 
-    #[tool(description = "Hybrid query combining vector similarity search with knowledge graph traversal. Finds relevant chunks via embeddings, then expands results through entity relationships in the graph.")]
+    #[tool(
+        description = "Hybrid query combining vector similarity search with knowledge graph traversal. Finds relevant chunks via embeddings, then expands results through entity relationships in the graph."
+    )]
     async fn graph_query(
         &self,
         Parameters(params): Parameters<GraphQueryParams>,
@@ -403,10 +403,7 @@ impl RagMcpServer {
             .embed_single(&params.query)
             .await
             .map_err(|e| {
-                McpError::internal_error(
-                    "embedding_error",
-                    Some(json!({"error": e.to_string()})),
-                )
+                McpError::internal_error("embedding_error", Some(json!({"error": e.to_string()})))
             })?;
 
         let vector_results = self
@@ -414,10 +411,7 @@ impl RagMcpServer {
             .search(&query_embedding, top_k)
             .await
             .map_err(|e| {
-                McpError::internal_error(
-                    "search_error",
-                    Some(json!({"error": e.to_string()})),
-                )
+                McpError::internal_error("search_error", Some(json!({"error": e.to_string()})))
             })?;
 
         let query_entities = self.extractor.extract_entities(&params.query).await;
@@ -427,14 +421,20 @@ impl RagMcpServer {
             if let Some(node) = self.graph.get_node_by_name(&entity.name) {
                 let reachable = self.graph.bfs(&node.id, depth);
                 for neighbor in &reachable {
-                    if let Some(chunks) = self.entity_chunks.get(&neighbor.name) {
-                        for chunk_id in chunks.value().iter() {
+                    if let Some(chunks) = self
+                        .entity_chunks
+                        .read()
+                        .unwrap()
+                        .get(&neighbor.name)
+                        .cloned()
+                    {
+                        for chunk_id in chunks.iter() {
                             graph_chunk_ids.insert(chunk_id.clone());
                         }
                     }
                 }
-                if let Some(chunks) = self.entity_chunks.get(&node.name) {
-                    for chunk_id in chunks.value().iter() {
+                if let Some(chunks) = self.entity_chunks.read().unwrap().get(&node.name).cloned() {
+                    for chunk_id in chunks.iter() {
                         graph_chunk_ids.insert(chunk_id.clone());
                     }
                 }
@@ -448,8 +448,10 @@ impl RagMcpServer {
             seen_ids.insert(sim.document.id.clone());
             let entities = self
                 .chunk_entities
+                .read()
+                .unwrap()
                 .get(&sim.document.id)
-                .map(|e| e.value().iter().cloned().collect::<Vec<String>>())
+                .map(|e| e.iter().cloned().collect::<Vec<String>>())
                 .unwrap_or_default();
 
             results.push(json!({
@@ -467,8 +469,10 @@ impl RagMcpServer {
             {
                 let entities = self
                     .chunk_entities
+                    .read()
+                    .unwrap()
                     .get(chunk_id)
-                    .map(|e| e.value().iter().cloned().collect::<Vec<String>>())
+                    .map(|e| e.iter().cloned().collect::<Vec<String>>())
                     .unwrap_or_default();
 
                 results.push(json!({
@@ -492,7 +496,9 @@ impl RagMcpServer {
         })))
     }
 
-    #[tool(description = "Get detailed information about an entity in the knowledge graph, including its type, connections, and associated document count.")]
+    #[tool(
+        description = "Get detailed information about an entity in the knowledge graph, including its type, connections, and associated document count."
+    )]
     async fn graph_get_entity(
         &self,
         Parameters(params): Parameters<GetEntityParams>,
@@ -505,8 +511,10 @@ impl RagMcpServer {
                 let degree = self.graph.degree(&node.id);
                 let chunk_count = self
                     .entity_chunks
+                    .read()
+                    .unwrap()
                     .get(&node.name)
-                    .map(|e| e.value().len())
+                    .map(|e| e.len())
                     .unwrap_or(0);
 
                 Ok(tool_result(json!({
@@ -524,7 +532,9 @@ impl RagMcpServer {
         }
     }
 
-    #[tool(description = "Get the neighbors of an entity in the knowledge graph up to a specified traversal depth.")]
+    #[tool(
+        description = "Get the neighbors of an entity in the knowledge graph up to a specified traversal depth."
+    )]
     async fn graph_get_neighbors(
         &self,
         Parameters(params): Parameters<GetNeighborsParams>,
@@ -548,7 +558,9 @@ impl RagMcpServer {
         }
     }
 
-    #[tool(description = "Get statistics about the knowledge graph: node count, edge count, density, and community count.")]
+    #[tool(
+        description = "Get statistics about the knowledge graph: node count, edge count, density, and community count."
+    )]
     async fn graph_info(&self) -> Result<CallToolResult, McpError> {
         let communities = self.graph.detect_communities();
         let doc_count = self.store.count().await.unwrap_or(0);
@@ -562,7 +574,9 @@ impl RagMcpServer {
         })))
     }
 
-    #[tool(description = "Detect communities in the knowledge graph using label propagation. Returns groups of closely related entities.")]
+    #[tool(
+        description = "Detect communities in the knowledge graph using label propagation. Returns groups of closely related entities."
+    )]
     async fn graph_communities(&self) -> Result<CallToolResult, McpError> {
         let communities = self.graph.detect_communities();
 

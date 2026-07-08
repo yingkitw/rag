@@ -55,10 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let info = engine.graph_info();
     println!(
         "\nGraph: {} nodes, {} edges, {} communities (density {:.4})",
-        info.node_count,
-        info.edge_count,
-        info.community_count,
-        info.density
+        info.node_count, info.edge_count, info.community_count, info.density
     );
 
     if let Some(e) = engine.get_entity_info("Alice") {

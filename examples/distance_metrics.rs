@@ -1,6 +1,6 @@
 use rag::{
-    vector_store::{Document, InMemoryVectorStore, VectorStore},
     DistanceMetric,
+    vector_store::{Document, InMemoryVectorStore, VectorStore},
 };
 
 #[tokio::main]
@@ -8,14 +8,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Distance Metrics Comparison ===\n");
 
     let documents = vec![
-        Document::new("Document at [1, 0, 0]".to_string())
-            .with_embedding(vec![1.0, 0.0, 0.0]),
-        Document::new("Document at [0, 1, 0]".to_string())
-            .with_embedding(vec![0.0, 1.0, 0.0]),
-        Document::new("Document at [1, 1, 0]".to_string())
-            .with_embedding(vec![1.0, 1.0, 0.0]),
-        Document::new("Document at [0.9, 0.1, 0]".to_string())
-            .with_embedding(vec![0.9, 0.1, 0.0]),
+        Document::new("Document at [1, 0, 0]".to_string()).with_embedding(vec![1.0, 0.0, 0.0]),
+        Document::new("Document at [0, 1, 0]".to_string()).with_embedding(vec![0.0, 1.0, 0.0]),
+        Document::new("Document at [1, 1, 0]".to_string()).with_embedding(vec![1.0, 1.0, 0.0]),
+        Document::new("Document at [0.9, 0.1, 0]".to_string()).with_embedding(vec![0.9, 0.1, 0.0]),
     ];
 
     let metrics = vec![

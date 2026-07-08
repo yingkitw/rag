@@ -6,7 +6,7 @@
 use crate::errors::{RagError, Result};
 use crate::index::DistanceMetric;
 use crate::vector_store::{Document, MetadataFilter, Similarity, VectorStore};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde_json;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -18,9 +18,12 @@ pub struct SqliteVectorStore {
 
 impl SqliteVectorStore {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let conn = Connection::open(path).map_err(|e| RagError::IoError(std::io::Error::other(
-            format!("Failed to open SQLite: {}", e),
-        )))?;
+        let conn = Connection::open(path).map_err(|e| {
+            RagError::IoError(std::io::Error::other(format!(
+                "Failed to open SQLite: {}",
+                e
+            )))
+        })?;
         let store = Self {
             conn: Arc::new(Mutex::new(conn)),
             metric: DistanceMetric::Cosine,
@@ -30,9 +33,12 @@ impl SqliteVectorStore {
     }
 
     pub fn open_in_memory() -> Result<Self> {
-        let conn = Connection::open_in_memory().map_err(|e| RagError::IoError(std::io::Error::other(
-            format!("Failed to open in-memory SQLite: {}", e),
-        )))?;
+        let conn = Connection::open_in_memory().map_err(|e| {
+            RagError::IoError(std::io::Error::other(format!(
+                "Failed to open in-memory SQLite: {}",
+                e
+            )))
+        })?;
         let store = Self {
             conn: Arc::new(Mutex::new(conn)),
             metric: DistanceMetric::Cosine,
@@ -83,8 +89,8 @@ impl SqliteVectorStore {
 impl VectorStore for SqliteVectorStore {
     async fn add(&self, document: Document) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        let metadata_json = serde_json::to_string(&document.metadata)
-            .map_err(RagError::JsonError)?;
+        let metadata_json =
+            serde_json::to_string(&document.metadata).map_err(RagError::JsonError)?;
         let embedding_json = document
             .embedding
             .as_ref()
@@ -109,7 +115,8 @@ impl VectorStore for SqliteVectorStore {
     }
 
     async fn search(&self, query: &[f32], top_k: usize) -> Result<Vec<Similarity>> {
-        self.search_with_filter(query, top_k, &MetadataFilter::new()).await
+        self.search_with_filter(query, top_k, &MetadataFilter::new())
+            .await
     }
 
     async fn search_with_filter(
@@ -125,16 +132,27 @@ impl VectorStore for SqliteVectorStore {
             .filter_map(|doc| {
                 doc.embedding.clone().map(|emb| {
                     let score = self.metric.similarity(query, &emb);
-                    Similarity { document: doc, score }
+                    Similarity {
+                        document: doc,
+                        score,
+                    }
                 })
             })
             .collect();
-        scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        scored.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         scored.truncate(top_k);
         Ok(scored)
     }
 
-    async fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Result<Vec<Vec<Similarity>>> {
+    async fn search_batch(
+        &self,
+        queries: &[Vec<f32>],
+        top_k: usize,
+    ) -> Result<Vec<Vec<Similarity>>> {
         let mut results = Vec::with_capacity(queries.len());
         for q in queries {
             results.push(self.search(q, top_k).await?);
@@ -213,8 +231,7 @@ mod tests {
     #[tokio::test]
     async fn test_sqlite_add_and_get() {
         let store = SqliteVectorStore::open_in_memory().unwrap();
-        let doc = Document::new("hello world".to_string())
-            .with_embedding(vec![1.0, 0.0, 0.0]);
+        let doc = Document::new("hello world".to_string()).with_embedding(vec![1.0, 0.0, 0.0]);
         let id = doc.id.clone();
         store.add(doc).await.unwrap();
 
@@ -226,8 +243,14 @@ mod tests {
     #[tokio::test]
     async fn test_sqlite_search() {
         let store = SqliteVectorStore::open_in_memory().unwrap();
-        store.add(Document::new("Rust is fast".to_string()).with_embedding(vec![1.0, 0.0, 0.0])).await.unwrap();
-        store.add(Document::new("Python is slow".to_string()).with_embedding(vec![0.0, 1.0, 0.0])).await.unwrap();
+        store
+            .add(Document::new("Rust is fast".to_string()).with_embedding(vec![1.0, 0.0, 0.0]))
+            .await
+            .unwrap();
+        store
+            .add(Document::new("Python is slow".to_string()).with_embedding(vec![0.0, 1.0, 0.0]))
+            .await
+            .unwrap();
 
         let results = store.search(&[1.0, 0.0, 0.0], 2).await.unwrap();
         assert_eq!(results.len(), 2);
@@ -254,7 +277,8 @@ mod tests {
 
         let doc_id = {
             let store = SqliteVectorStore::open(&path).unwrap();
-            let doc = Document::new("persistent content".to_string()).with_embedding(vec![0.5, 0.5]);
+            let doc =
+                Document::new("persistent content".to_string()).with_embedding(vec![0.5, 0.5]);
             let id = doc.id.clone();
             store.add(doc).await.unwrap();
             id

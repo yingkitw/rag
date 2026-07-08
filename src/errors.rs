@@ -97,7 +97,10 @@ mod tests {
     #[test]
     fn test_invalid_config_display() {
         let err = RagError::InvalidConfig("chunk_size must be > 0".to_string());
-        assert_eq!(format!("{}", err), "Invalid configuration: chunk_size must be > 0");
+        assert_eq!(
+            format!("{}", err),
+            "Invalid configuration: chunk_size must be > 0"
+        );
     }
 
     #[cfg(feature = "http")]

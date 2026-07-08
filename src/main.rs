@@ -129,12 +129,13 @@ fn collect_input_paths(files: &[PathBuf]) -> Vec<PathBuf> {
                 for entry in entries.flatten() {
                     let p = entry.path();
                     if p.is_file()
-                        && let Some(ext) = p.extension() {
-                            let ext = ext.to_string_lossy().to_lowercase();
-                            if ext == "txt" || ext == "md" {
-                                result.push(p);
-                            }
+                        && let Some(ext) = p.extension()
+                    {
+                        let ext = ext.to_string_lossy().to_lowercase();
+                        if ext == "txt" || ext == "md" {
+                            result.push(p);
                         }
+                    }
                 }
             }
         } else if path.is_file() {
@@ -242,7 +243,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 print_results(retriever.retrieve_with_scores(&query).await?);
             }
         }
-        Commands::HybridQuery { query, top_k, alpha } => {
+        Commands::HybridQuery {
+            query,
+            top_k,
+            alpha,
+        } => {
             ensure_state_dir(&cli.state_dir).await?;
             let store_path = cli.state_dir.join("vectors.json");
             if !store_path.exists() {
@@ -339,9 +344,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let embed = OpenAIEmbeddingModel::new(key);
                 let engine = if rag_path.exists() {
                     println!("Loading existing snapshot from {}", rag_path.display());
-                    GraphRagEngine::load_from_snapshot_file(&rag_path, SimpleEntityExtractor::new(), embed)
-                        .await?
-                        .with_chunker(make_chunker(&cli.chunker))
+                    GraphRagEngine::load_from_snapshot_file(
+                        &rag_path,
+                        SimpleEntityExtractor::new(),
+                        embed,
+                    )
+                    .await?
+                    .with_chunker(make_chunker(&cli.chunker))
                 } else {
                     GraphRagEngine::new(
                         SimpleEntityExtractor::new(),
@@ -358,9 +367,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .with_base_url(ollama_url.clone());
                 let engine = if rag_path.exists() {
                     println!("Loading existing snapshot from {}", rag_path.display());
-                    GraphRagEngine::load_from_snapshot_file(&rag_path, SimpleEntityExtractor::new(), embed)
-                        .await?
-                        .with_chunker(make_chunker(&cli.chunker))
+                    GraphRagEngine::load_from_snapshot_file(
+                        &rag_path,
+                        SimpleEntityExtractor::new(),
+                        embed,
+                    )
+                    .await?
+                    .with_chunker(make_chunker(&cli.chunker))
                 } else {
                     GraphRagEngine::new(
                         SimpleEntityExtractor::new(),
@@ -392,18 +405,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if let Some(key) = api_key {
                 let embed = OpenAIEmbeddingModel::new(key);
-                let engine =
-                    GraphRagEngine::load_from_snapshot_file(&rag_path, SimpleEntityExtractor::new(), embed)
-                        .await?
-                        .with_top_k(top_k);
+                let engine = GraphRagEngine::load_from_snapshot_file(
+                    &rag_path,
+                    SimpleEntityExtractor::new(),
+                    embed,
+                )
+                .await?
+                .with_top_k(top_k);
                 print_graph_results(engine.query(&query).await?);
             } else {
                 let embed = OllamaEmbeddingModel::new(ollama_model.clone())
                     .with_base_url(ollama_url.clone());
-                let engine =
-                    GraphRagEngine::load_from_snapshot_file(&rag_path, SimpleEntityExtractor::new(), embed)
-                        .await?
-                        .with_top_k(top_k);
+                let engine = GraphRagEngine::load_from_snapshot_file(
+                    &rag_path,
+                    SimpleEntityExtractor::new(),
+                    embed,
+                )
+                .await?
+                .with_top_k(top_k);
                 print_graph_results(engine.query(&query).await?);
             }
         }
@@ -490,8 +509,8 @@ mod tests {
 
     #[test]
     fn test_cli_add_single_file() {
-        let cli = Cli::try_parse_from(["rag", "add", "--file", "doc.txt", "--source", "test"])
-            .unwrap();
+        let cli =
+            Cli::try_parse_from(["rag", "add", "--file", "doc.txt", "--source", "test"]).unwrap();
         match cli.command {
             Commands::Add { file, source } => {
                 assert_eq!(file.len(), 1);
@@ -519,7 +538,8 @@ mod tests {
 
     #[test]
     fn test_cli_query() {
-        let cli = Cli::try_parse_from(["rag", "query", "--query", "hello", "--top-k", "3"]).unwrap();
+        let cli =
+            Cli::try_parse_from(["rag", "query", "--query", "hello", "--top-k", "3"]).unwrap();
         match cli.command {
             Commands::Query { query, top_k } => {
                 assert_eq!(query, "hello");

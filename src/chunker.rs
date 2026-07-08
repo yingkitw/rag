@@ -12,7 +12,10 @@ pub struct FixedSizeChunker {
 
 impl FixedSizeChunker {
     pub fn new(chunk_size: usize, overlap: usize) -> Self {
-        Self { chunk_size, overlap }
+        Self {
+            chunk_size,
+            overlap,
+        }
     }
 }
 
@@ -144,16 +147,7 @@ impl RecursiveChunker {
 
 fn default_separators() -> Vec<String> {
     [
-        "\n\n\n",
-        "\n\n",
-        "\n",
-        ". ",
-        "! ",
-        "? ",
-        "; ",
-        ", ",
-        " ",
-        "",
+        "\n\n\n", "\n\n", "\n", ". ", "! ", "? ", "; ", ", ", " ", "",
     ]
     .iter()
     .map(|s| s.to_string())
@@ -208,7 +202,11 @@ fn split_recursive(text: &str, separators: &[String], chunk_size: usize) -> Vec<
             continue;
         }
         if trimmed.len() > chunk_size && sep_idx + 1 < separators.len() {
-            out.extend(split_recursive(&trimmed, &separators[sep_idx + 1..], chunk_size));
+            out.extend(split_recursive(
+                &trimmed,
+                &separators[sep_idx + 1..],
+                chunk_size,
+            ));
         } else {
             out.push(trimmed);
         }
@@ -226,10 +224,11 @@ fn merge_pieces(pieces: &[String], chunk_size: usize, overlap: usize) -> Vec<Str
             chunks.push(std::mem::take(&mut current));
             // seed next chunk with trailing overlap from the just-emitted chunk
             if overlap > 0
-                && let Some(last) = chunks.last() {
-                    let start = last.len().saturating_sub(overlap);
-                    current = last[start..].to_string();
-                }
+                && let Some(last) = chunks.last()
+            {
+                let start = last.len().saturating_sub(overlap);
+                current = last[start..].to_string();
+            }
         }
         if !current.is_empty() {
             current.push(' ');
@@ -307,9 +306,7 @@ impl TextChunker for SemanticChunker {
 }
 
 fn tokenize_set(text: &str) -> HashSet<String> {
-    text.split_whitespace()
-        .map(|w| w.to_lowercase())
-        .collect()
+    text.split_whitespace().map(|w| w.to_lowercase()).collect()
 }
 
 fn jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
@@ -318,11 +315,7 @@ fn jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
     }
     let inter = a.intersection(b).count() as f64;
     let union = a.union(b).count() as f64;
-    if union == 0.0 {
-        0.0
-    } else {
-        inter / union
-    }
+    if union == 0.0 { 0.0 } else { inter / union }
 }
 
 /// Structural (Markdown / code-aware) chunker. Splits on Markdown headings and

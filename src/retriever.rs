@@ -4,7 +4,7 @@ use crate::embeddings::EmbeddingModel;
 use crate::errors::Result;
 use crate::hybrid::merge_hybrid;
 use crate::keyword::Bm25Index;
-use crate::vector_store::{load_all_documents, Document, VectorStore};
+use crate::vector_store::{Document, VectorStore, load_all_documents};
 
 pub struct Retriever<T, V>
 where
@@ -52,10 +52,7 @@ where
     pub async fn add_document(&self, content: String) -> Result<String> {
         let chunks = self.chunker.chunk(&content)?;
 
-        let chunk_embeddings = self
-            .embedding_model
-            .embed(chunks.clone())
-            .await?;
+        let chunk_embeddings = self.embedding_model.embed(chunks.clone()).await?;
 
         let mut doc_ids = Vec::new();
 
@@ -79,16 +76,12 @@ where
     ) -> Result<String> {
         let chunks = self.chunker.chunk(&content)?;
 
-        let chunk_embeddings = self
-            .embedding_model
-            .embed(chunks.clone())
-            .await?;
+        let chunk_embeddings = self.embedding_model.embed(chunks.clone()).await?;
 
         let mut doc_ids = Vec::new();
 
         for (chunk, embedding) in chunks.into_iter().zip(chunk_embeddings) {
-            let mut doc = Document::new(chunk)
-                .with_embedding(embedding);
+            let mut doc = Document::new(chunk).with_embedding(embedding);
             for (key, value) in metadata.clone() {
                 doc = doc.with_metadata(key, value);
             }
@@ -139,7 +132,8 @@ where
         alpha: f32,
         min_jaccard: f32,
     ) -> Result<Vec<(String, f32)>> {
-        self.retrieve_hybrid_impl(query, alpha, Some(min_jaccard)).await
+        self.retrieve_hybrid_impl(query, alpha, Some(min_jaccard))
+            .await
     }
 
     async fn retrieve_hybrid_impl(
@@ -177,10 +171,7 @@ where
             }
         };
         let query_embedding = self.embedding_model.embed_single(query).await?;
-        let vec_hits = self
-            .vector_store
-            .search(&query_embedding, cap)
-            .await?;
+        let vec_hits = self.vector_store.search(&query_embedding, cap).await?;
         let mut merged = merge_hybrid(&map, &vec_hits, &kw, alpha, self.top_k)?;
         if let Some(th) = dedup_jaccard {
             merged = dedup_similarities(merged, th);
@@ -241,10 +232,7 @@ mod tests {
         async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
             let mut results = Vec::new();
             for text in texts {
-                let embedding = text
-                    .bytes()
-                    .map(|b| b as f32 / 255.0)
-                    .collect::<Vec<f32>>();
+                let embedding = text.bytes().map(|b| b as f32 / 255.0).collect::<Vec<f32>>();
                 results.push(embedding);
             }
             Ok(results)
@@ -308,7 +296,9 @@ mod tests {
             .with_top_k(2);
 
         retriever
-            .add_document("one two three four five six seven eight nine ten eleven twelve".to_string())
+            .add_document(
+                "one two three four five six seven eight nine ten eleven twelve".to_string(),
+            )
             .await
             .unwrap();
 
@@ -367,7 +357,10 @@ mod tests {
             .await
             .unwrap();
 
-        let results = retriever.retrieve_filtered("content", "special").await.unwrap();
+        let results = retriever
+            .retrieve_filtered("content", "special")
+            .await
+            .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0], "special tagged content");
     }

@@ -31,6 +31,8 @@ async fn main() {
         }
     } else {
         println!("Rewritten chunk (demo):");
-        println!("  In Rust's ownership system, the borrow checker ensures that references are always valid, preventing dangling pointers and data races at compile time.");
+        println!(
+            "  In Rust's ownership system, the borrow checker ensures that references are always valid, preventing dangling pointers and data races at compile time."
+        );
     }
 }

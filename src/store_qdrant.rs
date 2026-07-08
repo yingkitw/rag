@@ -8,7 +8,7 @@ use crate::index::DistanceMetric;
 use crate::vector_store::{Document, MetadataFilter, Similarity, VectorStore};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub struct QdrantVectorStore {
     client: Client,
@@ -50,10 +50,7 @@ impl QdrantVectorStore {
             "application/json".parse().unwrap(),
         );
         if let Some(key) = &self.api_key {
-            headers.insert(
-                "api-key",
-                key.parse().unwrap(),
-            );
+            headers.insert("api-key", key.parse().unwrap());
         }
         headers
     }
@@ -70,12 +67,19 @@ impl QdrantVectorStore {
             .map_err(|e| RagError::VectorStoreError(format!("Qdrant upsert failed: {}", e)))?;
         if !resp.status().is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(RagError::VectorStoreError(format!("Qdrant upsert error: {}", text)));
+            return Err(RagError::VectorStoreError(format!(
+                "Qdrant upsert error: {}",
+                text
+            )));
         }
         Ok(())
     }
 
-    async fn scroll_ids(&self, limit: usize, offset: Option<String>) -> Result<(Vec<String>, Option<String>)> {
+    async fn scroll_ids(
+        &self,
+        limit: usize,
+        offset: Option<String>,
+    ) -> Result<(Vec<String>, Option<String>)> {
         let mut body = json!({ "limit": limit, "with_payload": false, "with_vector": false });
         if let Some(off) = offset {
             body["offset"] = json!(off);
@@ -90,13 +94,19 @@ impl QdrantVectorStore {
             .map_err(|e| RagError::VectorStoreError(format!("Qdrant scroll failed: {}", e)))?;
         if !resp.status().is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(RagError::VectorStoreError(format!("Qdrant scroll error: {}", text)));
+            return Err(RagError::VectorStoreError(format!(
+                "Qdrant scroll error: {}",
+                text
+            )));
         }
-        let scroll: QdrantScroll = resp
-            .json()
-            .await
-            .map_err(|e| RagError::VectorStoreError(format!("Qdrant scroll decode failed: {}", e)))?;
-        let ids: Vec<String> = scroll.result.into_iter().map(|p| p.id.to_string()).collect();
+        let scroll: QdrantScroll = resp.json().await.map_err(|e| {
+            RagError::VectorStoreError(format!("Qdrant scroll decode failed: {}", e))
+        })?;
+        let ids: Vec<String> = scroll
+            .result
+            .into_iter()
+            .map(|p| p.id.to_string())
+            .collect();
         let next_offset = scroll.next_page_offset.map(|v| v.to_string());
         Ok((ids, next_offset))
     }
@@ -147,7 +157,11 @@ impl QdrantVectorStore {
                     .collect()
             })
             .unwrap_or_default();
-        let embedding = if point.vector.is_empty() { None } else { Some(point.vector) };
+        let embedding = if point.vector.is_empty() {
+            None
+        } else {
+            Some(point.vector)
+        };
         Some(Document {
             id: point.id.to_string(),
             content,
@@ -177,7 +191,8 @@ impl QdrantVectorStore {
 #[allow(async_fn_in_trait)]
 impl VectorStore for QdrantVectorStore {
     async fn add(&self, document: Document) -> Result<()> {
-        self.upsert_points(vec![Self::doc_to_point(&document)]).await
+        self.upsert_points(vec![Self::doc_to_point(&document)])
+            .await
     }
 
     async fn add_batch(&self, documents: Vec<Document>) -> Result<()> {
@@ -186,7 +201,8 @@ impl VectorStore for QdrantVectorStore {
     }
 
     async fn search(&self, query: &[f32], top_k: usize) -> Result<Vec<Similarity>> {
-        self.search_with_filter(query, top_k, &MetadataFilter::new()).await
+        self.search_with_filter(query, top_k, &MetadataFilter::new())
+            .await
     }
 
     async fn search_with_filter(
@@ -214,12 +230,14 @@ impl VectorStore for QdrantVectorStore {
             .map_err(|e| RagError::VectorStoreError(format!("Qdrant search failed: {}", e)))?;
         if !resp.status().is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(RagError::VectorStoreError(format!("Qdrant search error: {}", text)));
+            return Err(RagError::VectorStoreError(format!(
+                "Qdrant search error: {}",
+                text
+            )));
         }
-        let result: QdrantSearchResult = resp
-            .json()
-            .await
-            .map_err(|e| RagError::VectorStoreError(format!("Qdrant search decode failed: {}", e)))?;
+        let result: QdrantSearchResult = resp.json().await.map_err(|e| {
+            RagError::VectorStoreError(format!("Qdrant search decode failed: {}", e))
+        })?;
         let similarities = result
             .result
             .into_iter()
@@ -234,7 +252,11 @@ impl VectorStore for QdrantVectorStore {
         Ok(similarities)
     }
 
-    async fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Result<Vec<Vec<Similarity>>> {
+    async fn search_batch(
+        &self,
+        queries: &[Vec<f32>],
+        top_k: usize,
+    ) -> Result<Vec<Vec<Similarity>>> {
         let mut results = Vec::with_capacity(queries.len());
         for q in queries {
             results.push(self.search(q, top_k).await?);
@@ -255,7 +277,10 @@ impl VectorStore for QdrantVectorStore {
         }
         if !resp.status().is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(RagError::VectorStoreError(format!("Qdrant get error: {}", text)));
+            return Err(RagError::VectorStoreError(format!(
+                "Qdrant get error: {}",
+                text
+            )));
         }
         let result: QdrantPointResult = resp
             .json()
@@ -289,8 +314,14 @@ impl VectorStore for QdrantVectorStore {
             .json(&body)
             .send()
             .await
-            .map_err(|e| RagError::VectorStoreError(format!("Qdrant delete batch failed: {}", e)))?;
-        Ok(if resp.status().is_success() { ids.len() } else { 0 })
+            .map_err(|e| {
+                RagError::VectorStoreError(format!("Qdrant delete batch failed: {}", e))
+            })?;
+        Ok(if resp.status().is_success() {
+            ids.len()
+        } else {
+            0
+        })
     }
 
     async fn clear(&self) -> Result<()> {
@@ -330,7 +361,10 @@ impl VectorStore for QdrantVectorStore {
             .map_err(|e| RagError::VectorStoreError(format!("Qdrant list failed: {}", e)))?;
         if !resp.status().is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(RagError::VectorStoreError(format!("Qdrant list error: {}", text)));
+            return Err(RagError::VectorStoreError(format!(
+                "Qdrant list error: {}",
+                text
+            )));
         }
         let scroll: QdrantScroll = resp
             .json()
@@ -355,12 +389,14 @@ impl VectorStore for QdrantVectorStore {
             .map_err(|e| RagError::VectorStoreError(format!("Qdrant count failed: {}", e)))?;
         if !resp.status().is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(RagError::VectorStoreError(format!("Qdrant count error: {}", text)));
+            return Err(RagError::VectorStoreError(format!(
+                "Qdrant count error: {}",
+                text
+            )));
         }
-        let count: QdrantCount = resp
-            .json()
-            .await
-            .map_err(|e| RagError::VectorStoreError(format!("Qdrant count decode failed: {}", e)))?;
+        let count: QdrantCount = resp.json().await.map_err(|e| {
+            RagError::VectorStoreError(format!("Qdrant count decode failed: {}", e))
+        })?;
         Ok(count.result.count as usize)
     }
 

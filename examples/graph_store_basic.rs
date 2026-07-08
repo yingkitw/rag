@@ -37,11 +37,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ))?;
 
     let alice_lookup = g.get_node_by_name("Alice").expect("Alice by name");
-    println!("Lookup by name: {} ({})", alice_lookup.name, alice_lookup.label);
+    println!(
+        "Lookup by name: {} ({})",
+        alice_lookup.name, alice_lookup.label
+    );
 
     let nbrs = g.neighbors(&alice_id);
     println!("Alice degree: {}", g.degree(&alice_id));
-    println!("Alice neighbor names: {:?}", nbrs.iter().map(|n| &n.name).collect::<Vec<_>>());
+    println!(
+        "Alice neighbor names: {:?}",
+        nbrs.iter().map(|n| &n.name).collect::<Vec<_>>()
+    );
 
     let within_one = g.bfs(&alice_id, 1);
     println!(

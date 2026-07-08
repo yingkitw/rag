@@ -4,8 +4,12 @@
 pub fn levenshtein(a: &str, b: &str) -> usize {
     let a_len = a.chars().count();
     let b_len = b.chars().count();
-    if a_len == 0 { return b_len; }
-    if b_len == 0 { return a_len; }
+    if a_len == 0 {
+        return b_len;
+    }
+    if b_len == 0 {
+        return a_len;
+    }
     let mut prev = (0..=b_len).collect::<Vec<_>>();
     let mut curr = vec![0; b_len + 1];
     for (i, ac) in a.chars().enumerate() {
@@ -26,7 +30,11 @@ pub fn is_fuzzy_match(query: &str, term: &str, max_distance: usize) -> bool {
 
 /// Filter a list of terms to those within `max_distance` of `query`.
 pub fn fuzzy_filter<'a>(query: &str, terms: &[&'a str], max_distance: usize) -> Vec<&'a str> {
-    terms.iter().filter(|&&t| is_fuzzy_match(query, t, max_distance)).copied().collect()
+    terms
+        .iter()
+        .filter(|&&t| is_fuzzy_match(query, t, max_distance))
+        .copied()
+        .collect()
 }
 
 #[cfg(test)]

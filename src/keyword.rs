@@ -59,7 +59,10 @@ impl Bm25Index {
         Self::from_documents_with_config(docs, Bm25Config::default())
     }
 
-    pub fn from_documents_with_config(docs: &[Document], config: Bm25Config) -> crate::errors::Result<Self> {
+    pub fn from_documents_with_config(
+        docs: &[Document],
+        config: Bm25Config,
+    ) -> crate::errors::Result<Self> {
         if docs.is_empty() {
             return Ok(Self {
                 tf: HashMap::new(),
@@ -103,7 +106,10 @@ impl Bm25Index {
         let mut postings: HashMap<String, Vec<String>> = HashMap::new();
         for (doc_id, freqs) in &tf {
             for term in freqs.keys() {
-                postings.entry(term.clone()).or_default().push(doc_id.clone());
+                postings
+                    .entry(term.clone())
+                    .or_default()
+                    .push(doc_id.clone());
             }
         }
 
@@ -227,15 +233,21 @@ pub struct FieldBm25Index {
 
 impl FieldBm25Index {
     pub fn new(fields: Vec<(String, f32)>) -> Self {
-        Self { fields, indexes: HashMap::new() }
+        Self {
+            fields,
+            indexes: HashMap::new(),
+        }
     }
 
     pub fn build(&mut self, docs: &[Document]) -> crate::errors::Result<()> {
         for (field_name, _) in &self.fields {
-            let field_docs: Vec<Document> = docs.iter().map(|doc| {
-                let text = doc.metadata.get(field_name).cloned().unwrap_or_default();
-                Document::with_id(doc.id.clone(), text)
-            }).collect();
+            let field_docs: Vec<Document> = docs
+                .iter()
+                .map(|doc| {
+                    let text = doc.metadata.get(field_name).cloned().unwrap_or_default();
+                    Document::with_id(doc.id.clone(), text)
+                })
+                .collect();
             let idx = Bm25Index::from_documents(&field_docs)?;
             self.indexes.insert(field_name.clone(), idx);
         }
@@ -314,16 +326,18 @@ mod tests {
     #[test]
     fn field_bm25_boosts() {
         let mut d1 = Document::new("content1".to_string());
-        d1.metadata.insert("title".to_string(), "rust programming".to_string());
-        d1.metadata.insert("body".to_string(), "some body text".to_string());
+        d1.metadata
+            .insert("title".to_string(), "rust programming".to_string());
+        d1.metadata
+            .insert("body".to_string(), "some body text".to_string());
         let mut d2 = Document::new("content2".to_string());
-        d2.metadata.insert("title".to_string(), "other topic".to_string());
-        d2.metadata.insert("body".to_string(), "rust programming details".to_string());
+        d2.metadata
+            .insert("title".to_string(), "other topic".to_string());
+        d2.metadata
+            .insert("body".to_string(), "rust programming details".to_string());
         let docs = vec![d1, d2];
-        let mut idx = FieldBm25Index::new(vec![
-            ("title".to_string(), 3.0),
-            ("body".to_string(), 1.0),
-        ]);
+        let mut idx =
+            FieldBm25Index::new(vec![("title".to_string(), 3.0), ("body".to_string(), 1.0)]);
         idx.build(&docs).unwrap();
         let hits = idx.search("rust programming", 2);
         assert!(!hits.is_empty());

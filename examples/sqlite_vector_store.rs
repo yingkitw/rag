@@ -1,5 +1,5 @@
-use rag::vector_store::{Document, VectorStore};
 use rag::SqliteVectorStore;
+use rag::vector_store::{Document, VectorStore};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,7 +22,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let results = store.search(&[1.0, 0.0, 0.0], 2).await?;
     println!("\nTop 2 results for query [1.0, 0.0, 0.0]:");
     for (i, sim) in results.iter().enumerate() {
-        println!("  {}. {} (score: {:.4})", i + 1, sim.document.content, sim.score);
+        println!(
+            "  {}. {} (score: {:.4})",
+            i + 1,
+            sim.document.content,
+            sim.score
+        );
     }
 
     println!("\nDocument count: {}", store.count().await?);

@@ -16,7 +16,11 @@ pub struct CohereReranker {
 
 impl CohereReranker {
     pub fn new(api_key: String) -> Self {
-        Self { client: Client::new(), api_key, model: "rerank-english-v3.0".to_string() }
+        Self {
+            client: Client::new(),
+            api_key,
+            model: "rerank-english-v3.0".to_string(),
+        }
     }
 }
 
@@ -44,12 +48,18 @@ impl SimilarityReranker for CohereReranker {
             return Ok(items);
         }
         let docs: Vec<String> = items.iter().map(|i| i.document.content.clone()).collect();
-        let req = CohereRequest { query: query.to_string(), documents: docs, model: self.model.clone() };
-        let resp = self.client
+        let req = CohereRequest {
+            query: query.to_string(),
+            documents: docs,
+            model: self.model.clone(),
+        };
+        let resp = self
+            .client
             .post("https://api.cohere.com/v2/rerank")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&req)
-            .send().await?;
+            .send()
+            .await?;
         if !resp.status().is_success() {
             return Err(RagError::EmbeddingError(resp.text().await?));
         }
@@ -74,7 +84,11 @@ pub struct VoyageReranker {
 
 impl VoyageReranker {
     pub fn new(api_key: String) -> Self {
-        Self { client: Client::new(), api_key, model: "rerank-lite-1".to_string() }
+        Self {
+            client: Client::new(),
+            api_key,
+            model: "rerank-lite-1".to_string(),
+        }
     }
 }
 
@@ -102,12 +116,18 @@ impl SimilarityReranker for VoyageReranker {
             return Ok(items);
         }
         let docs: Vec<String> = items.iter().map(|i| i.document.content.clone()).collect();
-        let req = VoyageRequest { query: query.to_string(), documents: docs, model: self.model.clone() };
-        let resp = self.client
+        let req = VoyageRequest {
+            query: query.to_string(),
+            documents: docs,
+            model: self.model.clone(),
+        };
+        let resp = self
+            .client
             .post("https://api.voyageai.com/v1/rerank")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&req)
-            .send().await?;
+            .send()
+            .await?;
         if !resp.status().is_success() {
             return Err(RagError::EmbeddingError(resp.text().await?));
         }
@@ -132,7 +152,11 @@ pub struct MixedBreadReranker {
 
 impl MixedBreadReranker {
     pub fn new(api_key: String) -> Self {
-        Self { client: Client::new(), api_key, model: "mixedbread-ai/mxbai-rerank-large-v1".to_string() }
+        Self {
+            client: Client::new(),
+            api_key,
+            model: "mixedbread-ai/mxbai-rerank-large-v1".to_string(),
+        }
     }
 }
 
@@ -160,12 +184,18 @@ impl SimilarityReranker for MixedBreadReranker {
             return Ok(items);
         }
         let docs: Vec<String> = items.iter().map(|i| i.document.content.clone()).collect();
-        let req = MixedBreadRequest { query: query.to_string(), documents: docs, model: self.model.clone() };
-        let resp = self.client
+        let req = MixedBreadRequest {
+            query: query.to_string(),
+            documents: docs,
+            model: self.model.clone(),
+        };
+        let resp = self
+            .client
             .post("https://api.mixedbread.ai/v1/reranking")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&req)
-            .send().await?;
+            .send()
+            .await?;
         if !resp.status().is_success() {
             return Err(RagError::EmbeddingError(resp.text().await?));
         }

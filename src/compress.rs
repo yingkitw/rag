@@ -7,7 +7,7 @@
 //! is easily inspected with the `zstd` CLI.
 
 use crate::errors::Result;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 #[cfg(feature = "compress")]
 use std::io::{Read, Write};

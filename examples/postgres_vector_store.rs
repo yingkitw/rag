@@ -1,10 +1,11 @@
-use rag::vector_store::{Document, VectorStore};
 use rag::PostgresVectorStore;
+use rag::vector_store::{Document, VectorStore};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let conn_str = std::env::var("POSTGRES_URL")
-        .unwrap_or_else(|_| "host=localhost user=postgres password=postgres dbname=postgres".to_string());
+    let conn_str = std::env::var("POSTGRES_URL").unwrap_or_else(|_| {
+        "host=localhost user=postgres password=postgres dbname=postgres".to_string()
+    });
 
     println!("=== PostgreSQL Vector Store Example ===\n");
     println!("Connecting to Postgres...");
@@ -26,7 +27,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let results = store.search(&[1.0, 0.0, 0.0], 2).await?;
     println!("\nTop 2 results for query [1.0, 0.0, 0.0]:");
     for (i, sim) in results.iter().enumerate() {
-        println!("  {}. {} (score: {:.4})", i + 1, sim.document.content, sim.score);
+        println!(
+            "  {}. {} (score: {:.4})",
+            i + 1,
+            sim.document.content,
+            sim.score
+        );
     }
 
     println!("\nDocument count: {}", store.count().await?);

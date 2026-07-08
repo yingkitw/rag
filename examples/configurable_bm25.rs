@@ -24,7 +24,8 @@ fn main() {
     }
 
     // Tuned BM25 (k1=1.5, b=0.5) - less length normalization
-    let tuned_idx = Bm25Index::from_documents_with_config(&docs, Bm25Config::new(1.5, 0.5)).unwrap();
+    let tuned_idx =
+        Bm25Index::from_documents_with_config(&docs, Bm25Config::new(1.5, 0.5)).unwrap();
     let tuned_hits = tuned_idx.search("rust programming", 3);
     println!("\nTuned BM25 (k1=1.5, b=0.5) hits for 'rust programming':");
     for (id, score) in &tuned_hits {
@@ -36,19 +37,24 @@ fn main() {
     let mut field_docs = Vec::new();
     for i in 0..3 {
         let mut d = Document::new(format!("content{}", i));
-        d.metadata.insert("title".to_string(), "rust programming guide".to_string());
-        d.metadata.insert("body".to_string(), "detailed explanation of concepts".to_string());
+        d.metadata
+            .insert("title".to_string(), "rust programming guide".to_string());
+        d.metadata.insert(
+            "body".to_string(),
+            "detailed explanation of concepts".to_string(),
+        );
         field_docs.push(d);
     }
     let mut d = Document::new("content3".to_string());
-    d.metadata.insert("title".to_string(), "other topic".to_string());
-    d.metadata.insert("body".to_string(), "rust programming deep dive and examples".to_string());
+    d.metadata
+        .insert("title".to_string(), "other topic".to_string());
+    d.metadata.insert(
+        "body".to_string(),
+        "rust programming deep dive and examples".to_string(),
+    );
     field_docs.push(d);
 
-    let mut fidx = FieldBm25Index::new(vec![
-        ("title".to_string(), 3.0),
-        ("body".to_string(), 1.0),
-    ]);
+    let mut fidx = FieldBm25Index::new(vec![("title".to_string(), 3.0), ("body".to_string(), 1.0)]);
     fidx.build(&field_docs).unwrap();
 
     println!("\nField-level BM25 (title=3x, body=1x) for 'rust programming':");

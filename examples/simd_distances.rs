@@ -8,9 +8,18 @@ fn main() {
 
     println!("dim = {}", a.len());
     println!("dot product        = {:.4}", simd::dot_product(&a, &b));
-    println!("cosine similarity  = {:.4}", simd::cosine_similarity(&a, &b));
-    println!("euclidean distance = {:.4}", simd::euclidean_distance(&a, &b));
-    println!("manhattan distance = {:.4}", simd::manhattan_distance(&a, &b));
+    println!(
+        "cosine similarity  = {:.4}",
+        simd::cosine_similarity(&a, &b)
+    );
+    println!(
+        "euclidean distance = {:.4}",
+        simd::euclidean_distance(&a, &b)
+    );
+    println!(
+        "manhattan distance = {:.4}",
+        simd::manhattan_distance(&a, &b)
+    );
 
     // Benchmark sketch: scalar vs SIMD should match.
     let scalar_dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();

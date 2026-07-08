@@ -7,9 +7,9 @@ use rag::fastembed_store::{FastEmbedEmbeddingModel, FastEmbedReranker};
 #[cfg(feature = "fastembed")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use rag::EmbeddingModel;
     use rag::rerank::SimilarityReranker;
     use rag::vector_store::{Document, Similarity};
-    use rag::EmbeddingModel;
 
     let model = FastEmbedEmbeddingModel::new();
 
@@ -20,7 +20,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     let embeddings = model.embed(texts.clone()).await?;
-    println!("Embedded {} texts -> dim {}", embeddings.len(), embeddings[0].len());
+    println!(
+        "Embedded {} texts -> dim {}",
+        embeddings.len(),
+        embeddings[0].len()
+    );
 
     // Rerank candidate chunks with a local cross-encoder.
     let reranker = FastEmbedReranker::new();
@@ -31,7 +35,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             score: 0.0,
         })
         .collect::<Vec<_>>();
-    let reranked = reranker.rerank("How does Rust handle memory?", items).await?;
+    let reranked = reranker
+        .rerank("How does Rust handle memory?", items)
+        .await?;
     println!("\nReranked results:");
     for r in &reranked {
         println!("  {:.4} - {}", r.score, r.document.content);

@@ -8,14 +8,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wal = WriteAheadLog::new(&path);
 
     // Append some incremental mutations.
-    wal.append(&WalOp::Put(
-        Document::with_id("doc-1".to_string(), "first chunk".to_string()),
-    ))?;
-    wal.append(&WalOp::Put(
-        Document::with_id("doc-2".to_string(), "second chunk".to_string()),
-    ))?;
+    wal.append(&WalOp::Put(Document::with_id(
+        "doc-1".to_string(),
+        "first chunk".to_string(),
+    )))?;
+    wal.append(&WalOp::Put(Document::with_id(
+        "doc-2".to_string(),
+        "second chunk".to_string(),
+    )))?;
     wal.append_batch(&[
-        WalOp::Put(Document::with_id("doc-3".to_string(), "third chunk".to_string())),
+        WalOp::Put(Document::with_id(
+            "doc-3".to_string(),
+            "third chunk".to_string(),
+        )),
         WalOp::Delete("doc-1".to_string()),
     ])?;
 

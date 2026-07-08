@@ -175,11 +175,7 @@ mod tests {
 
     #[test]
     fn test_quantized_index_search_order() {
-        let vectors = vec![
-            vec![1.0, 0.0],
-            vec![0.0, 1.0],
-            vec![1.0, 1.0],
-        ];
+        let vectors = vec![vec![1.0, 0.0], vec![0.0, 1.0], vec![1.0, 1.0]];
         let params = QuantizationParams::fit(&vectors).unwrap();
         let mut index = QuantizedIndex::new(params);
         index.add("a", &[1.0, 0.0]);

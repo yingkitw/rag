@@ -17,10 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         for doc in &docs {
             println!("  Title: {}", doc.source);
-            println!(
-                "  Content length: {} characters",
-                doc.content.len()
-            );
+            println!("  Content length: {} characters", doc.content.len());
             println!(
                 "  URL: {}\n",
                 doc.metadata.get("url").unwrap_or(&"N/A".to_string())

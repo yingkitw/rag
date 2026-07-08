@@ -1,7 +1,7 @@
 use crate::vector_store::{Document, Similarity};
 use std::cmp::Reverse;
-use std::collections::BinaryHeap;
-use std::sync::Arc;
+use std::collections::{BinaryHeap, HashMap};
+use std::sync::{Arc, RwLock};
 
 /// Supported distance metrics for vector similarity search.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -33,20 +33,12 @@ impl DistanceMetric {
             DistanceMetric::Cosine => crate::simd::cosine_similarity(a, b),
             DistanceMetric::Euclidean => {
                 let dist = crate::simd::euclidean_distance(a, b);
-                if dist == 0.0 {
-                    1.0
-                } else {
-                    1.0 / (1.0 + dist)
-                }
+                if dist == 0.0 { 1.0 } else { 1.0 / (1.0 + dist) }
             }
             DistanceMetric::DotProduct => crate::simd::dot_product(a, b),
             DistanceMetric::Manhattan => {
                 let dist = crate::simd::manhattan_distance(a, b);
-                if dist == 0.0 {
-                    1.0
-                } else {
-                    1.0 / (1.0 + dist)
-                }
+                if dist == 0.0 { 1.0 } else { 1.0 / (1.0 + dist) }
             }
         }
     }
@@ -84,10 +76,7 @@ pub trait Index: Send + Sync {
 
     /// Batch search: find top-k for each query vector.
     fn search_batch(&self, queries: &[Vec<f32>], top_k: usize) -> Vec<Vec<Similarity>> {
-        queries
-            .iter()
-            .map(|q| self.search(q, top_k))
-            .collect()
+        queries.iter().map(|q| self.search(q, top_k)).collect()
     }
 
     /// Clear all documents from the index.
@@ -112,7 +101,7 @@ pub trait Index: Send + Sync {
 /// Suitable for small-to-medium datasets (< 100k documents).
 /// Uses parallel search for better performance.
 pub struct FlatIndex {
-    documents: dashmap::DashMap<String, Arc<Document>>,
+    documents: RwLock<HashMap<String, Arc<Document>>>,
     metric: DistanceMetric,
     dimension: Option<usize>,
 }
@@ -120,7 +109,7 @@ pub struct FlatIndex {
 impl FlatIndex {
     pub fn new() -> Self {
         Self {
-            documents: dashmap::DashMap::new(),
+            documents: RwLock::new(HashMap::new()),
             metric: DistanceMetric::default(),
             dimension: None,
         }
@@ -128,7 +117,7 @@ impl FlatIndex {
 
     pub fn with_metric(metric: DistanceMetric) -> Self {
         Self {
-            documents: dashmap::DashMap::new(),
+            documents: RwLock::new(HashMap::new()),
             metric,
             dimension: None,
         }
@@ -136,12 +125,11 @@ impl FlatIndex {
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            documents: dashmap::DashMap::with_capacity(capacity),
+            documents: RwLock::new(HashMap::with_capacity(capacity)),
             metric: DistanceMetric::default(),
             dimension: None,
         }
     }
-
 }
 
 impl Default for FlatIndex {
@@ -153,11 +141,13 @@ impl Default for FlatIndex {
 impl Index for FlatIndex {
     fn add(&self, document: Document) {
         self.documents
+            .write()
+            .unwrap()
             .insert(document.id.clone(), Arc::new(document));
     }
 
     fn remove(&self, id: &str) -> bool {
-        self.documents.remove(id).is_some()
+        self.documents.write().unwrap().remove(id).is_some()
     }
 
     fn search(&self, query: &[f32], top_k: usize) -> Vec<Similarity> {
@@ -182,18 +172,16 @@ impl Index for FlatIndex {
             return Vec::new();
         }
 
+        let doc_count = self.documents.read().unwrap().len();
+
         // For small batches, sequential is faster (avoids thread overhead)
-        if num_queries <= 4 || self.documents.len() < 1000 {
-            return queries
-                .iter()
-                .map(|q| self.search(q, top_k))
-                .collect();
+        if num_queries <= 4 || doc_count < 1000 {
+            return queries.iter().map(|q| self.search(q, top_k)).collect();
         }
 
         // Collect all docs once and share via Arc across threads
-        let docs: StdArc<Vec<StdArc<Document>>> = StdArc::new(
-            self.documents.iter().map(|entry| entry.value().clone()).collect()
-        );
+        let docs: StdArc<Vec<StdArc<Document>>> =
+            StdArc::new(self.documents.read().unwrap().values().cloned().collect());
         let metric = self.metric;
 
         let mut handles = Vec::with_capacity(num_queries);
@@ -213,11 +201,11 @@ impl Index for FlatIndex {
     }
 
     fn clear(&self) {
-        self.documents.clear();
+        self.documents.write().unwrap().clear();
     }
 
     fn len(&self) -> usize {
-        self.documents.len()
+        self.documents.read().unwrap().len()
     }
 
     fn dimension(&self) -> Option<usize> {
@@ -258,19 +246,19 @@ impl Ord for HeapItem {
 /// Find the top-k most similar documents using a bounded min-heap.
 /// Avoids sorting all candidates and cloning documents beyond the top-k.
 pub(crate) fn flat_search_top_k(
-    documents: &dashmap::DashMap<String, Arc<Document>>,
+    documents: &RwLock<HashMap<String, Arc<Document>>>,
     query: &[f32],
     metric: DistanceMetric,
     top_k: usize,
     filter: &dyn Fn(&Document) -> bool,
 ) -> Vec<Similarity> {
+    let documents = documents.read().unwrap();
     if top_k == 0 || documents.is_empty() {
         return Vec::new();
     }
 
     let mut heap: BinaryHeap<Reverse<HeapItem>> = BinaryHeap::with_capacity(top_k);
-    for entry in documents.iter() {
-        let doc = entry.value();
+    for doc in documents.values() {
         if !filter(doc) {
             continue;
         }
@@ -281,7 +269,9 @@ pub(crate) fn flat_search_top_k(
                     score,
                     doc: Arc::clone(doc),
                 }));
-            } else if let Some(Reverse(top)) = heap.peek() && score > top.score {
+            } else if let Some(Reverse(top)) = heap.peek()
+                && score > top.score
+            {
                 heap.pop();
                 heap.push(Reverse(HeapItem {
                     score,
@@ -324,7 +314,9 @@ pub(crate) fn flat_search_top_k_slice(
                     score,
                     doc: Arc::clone(doc),
                 }));
-            } else if let Some(Reverse(top)) = heap.peek() && score > top.score {
+            } else if let Some(Reverse(top)) = heap.peek()
+                && score > top.score
+            {
                 heap.pop();
                 heap.push(Reverse(HeapItem {
                     score,

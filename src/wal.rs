@@ -102,9 +102,7 @@ impl WriteAheadLog {
 }
 
 /// Apply a replayed log into a map keyed by document id. Later ops win.
-pub fn apply_ops(
-    ops: &[WalOp],
-) -> std::collections::HashMap<String, Document> {
+pub fn apply_ops(ops: &[WalOp]) -> std::collections::HashMap<String, Document> {
     let mut state: std::collections::HashMap<String, Document> = std::collections::HashMap::new();
     for op in ops {
         match op {
@@ -124,8 +122,7 @@ mod tests {
     use super::*;
 
     fn doc(id: &str) -> Document {
-        Document::with_id(id.to_string(), format!("content-{id}"))
-            .with_embedding(vec![1.0, 2.0])
+        Document::with_id(id.to_string(), format!("content-{id}")).with_embedding(vec![1.0, 2.0])
     }
 
     #[test]
@@ -202,6 +199,9 @@ mod tests {
         }
         let ops = wal.replay().unwrap();
         // Valid op still recovered; torn line skipped.
-        assert!(ops.iter().any(|o| matches!(o, WalOp::Put(d) if d.id == "a")));
+        assert!(
+            ops.iter()
+                .any(|o| matches!(o, WalOp::Put(d) if d.id == "a"))
+        );
     }
 }

@@ -5,11 +5,9 @@ use std::fs;
 async fn test_vector_store_basic_operations() {
     let store = InMemoryVectorStore::new();
 
-    let doc1 = Document::new("Test document 1".to_string())
-        .with_embedding(vec![1.0, 0.0, 0.0]);
+    let doc1 = Document::new("Test document 1".to_string()).with_embedding(vec![1.0, 0.0, 0.0]);
 
-    let doc2 = Document::new("Test document 2".to_string())
-        .with_embedding(vec![0.0, 1.0, 0.0]);
+    let doc2 = Document::new("Test document 2".to_string()).with_embedding(vec![0.0, 1.0, 0.0]);
 
     store.add(doc1.clone()).await.unwrap();
     store.add(doc2.clone()).await.unwrap();
@@ -35,8 +33,11 @@ async fn test_vector_store_batch_operations() {
 
     let docs: Vec<Document> = (1..=5)
         .map(|i| {
-            Document::new(format!("Batch document {}", i))
-                .with_embedding(vec![i as f32 / 5.0, 0.0, 0.0])
+            Document::new(format!("Batch document {}", i)).with_embedding(vec![
+                i as f32 / 5.0,
+                0.0,
+                0.0,
+            ])
         })
         .collect();
 
@@ -57,14 +58,11 @@ async fn test_vector_store_batch_operations() {
 async fn test_vector_store_search() {
     let store = InMemoryVectorStore::new();
 
-    let doc1 = Document::new("Similar document".to_string())
-        .with_embedding(vec![1.0, 0.0, 0.0]);
+    let doc1 = Document::new("Similar document".to_string()).with_embedding(vec![1.0, 0.0, 0.0]);
 
-    let doc2 = Document::new("Dissimilar document".to_string())
-        .with_embedding(vec![0.0, 1.0, 0.0]);
+    let doc2 = Document::new("Dissimilar document".to_string()).with_embedding(vec![0.0, 1.0, 0.0]);
 
-    let doc3 = Document::new("Somewhat similar".to_string())
-        .with_embedding(vec![0.7, 0.3, 0.0]);
+    let doc3 = Document::new("Somewhat similar".to_string()).with_embedding(vec![0.7, 0.3, 0.0]);
 
     store.add(doc1).await.unwrap();
     store.add(doc2).await.unwrap();
@@ -83,8 +81,8 @@ async fn test_vector_store_search_without_embedding() {
     let store = MinimalVectorDB::new();
 
     let doc1 = Document::new("Document without embedding".to_string());
-    let doc2 = Document::new("Document with embedding".to_string())
-        .with_embedding(vec![1.0, 0.0, 0.0]);
+    let doc2 =
+        Document::new("Document with embedding".to_string()).with_embedding(vec![1.0, 0.0, 0.0]);
 
     store.add(doc1).await.unwrap();
     store.add(doc2).await.unwrap();
@@ -141,8 +139,7 @@ async fn test_vector_store_metadata_filter() {
 async fn test_vector_store_empty_filter() {
     let store = MinimalVectorDB::new();
 
-    let doc = Document::new("Test document".to_string())
-        .with_embedding(vec![1.0, 0.0, 0.0]);
+    let doc = Document::new("Test document".to_string()).with_embedding(vec![1.0, 0.0, 0.0]);
 
     store.add(doc).await.unwrap();
 
@@ -195,10 +192,14 @@ async fn test_vector_store_persistence_in_memory() {
 
     let list = loaded_store.list(10, 0).await.unwrap();
     assert_eq!(list.len(), 3);
-    assert!(list.iter().all(|doc| doc.content.starts_with("Persistent document")));
-    assert!(list
-        .iter()
-        .all(|doc| doc.embedding.as_ref().map(|e| e.len()) == Some(3)));
+    assert!(
+        list.iter()
+            .all(|doc| doc.content.starts_with("Persistent document"))
+    );
+    assert!(
+        list.iter()
+            .all(|doc| doc.embedding.as_ref().map(|e| e.len()) == Some(3))
+    );
 }
 
 #[tokio::test]
@@ -240,8 +241,7 @@ async fn test_vector_store_pagination() {
 
     let docs: Vec<Document> = (1..=10)
         .map(|i| {
-            Document::new(format!("Document {}", i))
-                .with_embedding(vec![i as f32 / 10.0, 0.0, 0.0])
+            Document::new(format!("Document {}", i)).with_embedding(vec![i as f32 / 10.0, 0.0, 0.0])
         })
         .collect();
 
@@ -266,8 +266,7 @@ async fn test_vector_store_top_k_limited() {
 
     let docs: Vec<Document> = (1..=10)
         .map(|i| {
-            Document::new(format!("Document {}", i))
-                .with_embedding(vec![i as f32 / 10.0, 0.0, 0.0])
+            Document::new(format!("Document {}", i)).with_embedding(vec![i as f32 / 10.0, 0.0, 0.0])
         })
         .collect();
 
@@ -387,8 +386,11 @@ async fn test_vector_store_large_scale() {
     let docs: Vec<Document> = (1..=1000)
         .map(|i| {
             let angle = (i as f32 / 1000.0) * std::f32::consts::PI / 4.0;
-            Document::new(format!("Document {}", i))
-                .with_embedding(vec![angle.cos(), angle.sin(), 0.0])
+            Document::new(format!("Document {}", i)).with_embedding(vec![
+                angle.cos(),
+                angle.sin(),
+                0.0,
+            ])
         })
         .collect();
 
@@ -407,21 +409,15 @@ async fn test_vector_store_large_scale() {
 async fn test_vector_store_batch_search() {
     let store = InMemoryVectorStore::new();
 
-    let doc1 = Document::new("Rust programming".to_string())
-        .with_embedding(vec![1.0, 0.0, 0.0]);
-    let doc2 = Document::new("Python programming".to_string())
-        .with_embedding(vec![0.0, 1.0, 0.0]);
-    let doc3 = Document::new("JavaScript".to_string())
-        .with_embedding(vec![0.0, 0.0, 1.0]);
+    let doc1 = Document::new("Rust programming".to_string()).with_embedding(vec![1.0, 0.0, 0.0]);
+    let doc2 = Document::new("Python programming".to_string()).with_embedding(vec![0.0, 1.0, 0.0]);
+    let doc3 = Document::new("JavaScript".to_string()).with_embedding(vec![0.0, 0.0, 1.0]);
 
     store.add(doc1.clone()).await.unwrap();
     store.add(doc2.clone()).await.unwrap();
     store.add(doc3.clone()).await.unwrap();
 
-    let queries = vec![
-        vec![1.0, 0.0, 0.0],
-        vec![0.0, 1.0, 0.0],
-    ];
+    let queries = vec![vec![1.0, 0.0, 0.0], vec![0.0, 1.0, 0.0]];
 
     let results = store.search_batch(&queries, 2).await.unwrap();
     assert_eq!(results.len(), 2);
@@ -433,10 +429,8 @@ async fn test_vector_store_batch_search() {
 async fn test_vector_store_euclidean_metric() {
     let store = InMemoryVectorStore::with_metric(rag::DistanceMetric::Euclidean);
 
-    let doc1 = Document::new("doc1".to_string())
-        .with_embedding(vec![1.0, 0.0, 0.0]);
-    let doc2 = Document::new("doc2".to_string())
-        .with_embedding(vec![0.0, 1.0, 0.0]);
+    let doc1 = Document::new("doc1".to_string()).with_embedding(vec![1.0, 0.0, 0.0]);
+    let doc2 = Document::new("doc2".to_string()).with_embedding(vec![0.0, 1.0, 0.0]);
 
     store.add(doc1.clone()).await.unwrap();
     store.add(doc2.clone()).await.unwrap();

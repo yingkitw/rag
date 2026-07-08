@@ -134,12 +134,11 @@ impl SimilarityReranker for FastEmbedReranker {
         let model = self.get().await?;
         let documents: Vec<String> = items.iter().map(|s| s.document.content.clone()).collect();
         let query = query.to_string();
-        let results = tokio::task::spawn_blocking(move || {
-            model.rerank(query, documents, false, None)
-        })
-        .await
-        .map_err(|e| RagError::EmbeddingError(format!("join error: {e}")))?
-        .map_err(|e| RagError::EmbeddingError(format!("fastembed rerank: {e}")))?;
+        let results =
+            tokio::task::spawn_blocking(move || model.rerank(query, documents, false, None))
+                .await
+                .map_err(|e| RagError::EmbeddingError(format!("join error: {e}")))?
+                .map_err(|e| RagError::EmbeddingError(format!("fastembed rerank: {e}")))?;
 
         // results are sorted by score descending; remap onto the input items.
         let mut reranked = Vec::with_capacity(results.len());

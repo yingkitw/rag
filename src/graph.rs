@@ -1,10 +1,10 @@
 use crate::errors::{RagError, Result};
 use crate::id::new_uuid_v4;
-use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::Path;
+use std::sync::RwLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphNode {
@@ -89,11 +89,11 @@ pub struct GraphPersisted {
 }
 
 pub struct GraphStore {
-    nodes: DashMap<String, GraphNode>,
-    edges: DashMap<String, GraphEdge>,
-    out_edges: DashMap<String, HashSet<String>>,
-    in_edges: DashMap<String, HashSet<String>>,
-    name_index: DashMap<String, String>,
+    nodes: RwLock<HashMap<String, GraphNode>>,
+    edges: RwLock<HashMap<String, GraphEdge>>,
+    out_edges: RwLock<HashMap<String, HashSet<String>>>,
+    in_edges: RwLock<HashMap<String, HashSet<String>>>,
+    name_index: RwLock<HashMap<String, String>>,
 }
 
 impl Default for GraphStore {
@@ -105,36 +105,36 @@ impl Default for GraphStore {
 impl GraphStore {
     pub fn new() -> Self {
         Self {
-            nodes: DashMap::new(),
-            edges: DashMap::new(),
-            out_edges: DashMap::new(),
-            in_edges: DashMap::new(),
-            name_index: DashMap::new(),
+            nodes: RwLock::new(HashMap::new()),
+            edges: RwLock::new(HashMap::new()),
+            out_edges: RwLock::new(HashMap::new()),
+            in_edges: RwLock::new(HashMap::new()),
+            name_index: RwLock::new(HashMap::new()),
         }
     }
 
     pub fn add_node(&self, node: GraphNode) -> Result<()> {
         let id = node.id.clone();
         let name = node.name.to_lowercase();
-        self.name_index.insert(name, id.clone());
-        self.nodes.insert(id, node);
+        self.name_index.write().unwrap().insert(name, id.clone());
+        self.nodes.write().unwrap().insert(id, node);
         Ok(())
     }
 
     pub fn get_node(&self, id: &str) -> Option<GraphNode> {
-        self.nodes.get(id).map(|n| n.value().clone())
+        self.nodes.read().unwrap().get(id).cloned()
     }
 
     pub fn get_node_by_name(&self, name: &str) -> Option<GraphNode> {
         let key = name.to_lowercase();
-        self.name_index
-            .get(&key)
-            .and_then(|id| self.get_node(id.value()))
+        let id = self.name_index.read().unwrap().get(&key).cloned();
+        id.and_then(|id| self.get_node(&id))
     }
 
     pub fn update_node(&self, id: &str, node: GraphNode) -> Result<bool> {
-        if self.nodes.contains_key(id) {
-            self.nodes.insert(id.to_string(), node);
+        let mut nodes = self.nodes.write().unwrap();
+        if nodes.contains_key(id) {
+            nodes.insert(id.to_string(), node);
             Ok(true)
         } else {
             Err(RagError::GraphError(format!("Node not found: {}", id)))
@@ -142,53 +142,34 @@ impl GraphStore {
     }
 
     pub fn remove_node(&self, id: &str) -> Result<bool> {
-        if let Some((_, node)) = self.nodes.remove(id) {
-            let name = node.name.to_lowercase();
-            self.name_index.remove(&name);
-
-            let edge_ids_to_remove: Vec<String> = self
-                .out_edges
-                .get(id)
-                .map(|s| s.value().iter().cloned().collect())
-                .unwrap_or_default();
-
-            let in_edge_ids: Vec<String> = self
-                .in_edges
-                .get(id)
-                .map(|s| s.value().iter().cloned().collect())
-                .unwrap_or_default();
-
-            for eid in edge_ids_to_remove.iter().chain(in_edge_ids.iter()) {
-                self.remove_edge_direct(eid);
+        // Snapshot affected edge ids under read locks before mutating.
+        let edge_ids: Vec<String> = {
+            let mut ids = Vec::new();
+            if let Some(s) = self.out_edges.read().unwrap().get(id) {
+                ids.extend(s.iter().cloned());
             }
-
-            self.out_edges.remove(id);
-            self.in_edges.remove(id);
-
-            for eid in &edge_ids_to_remove {
-                if let Some(edge) = self.edges.get(eid) {
-                    let target = edge.target.clone();
-                    drop(edge);
-                    if let Some(mut set) = self.in_edges.get_mut(&target) {
-                        set.remove(eid);
-                    }
-                }
+            if let Some(s) = self.in_edges.read().unwrap().get(id) {
+                ids.extend(s.iter().cloned());
             }
+            ids
+        };
 
-            for eid in &in_edge_ids {
-                if let Some(edge) = self.edges.get(eid) {
-                    let source = edge.source.clone();
-                    drop(edge);
-                    if let Some(mut set) = self.out_edges.get_mut(&source) {
-                        set.remove(eid);
-                    }
-                }
-            }
+        let node = self.nodes.write().unwrap().remove(id);
+        let Some(node) = node else {
+            return Ok(false);
+        };
 
-            Ok(true)
-        } else {
-            Ok(false)
+        let name = node.name.to_lowercase();
+        self.name_index.write().unwrap().remove(&name);
+        self.out_edges.write().unwrap().remove(id);
+        self.in_edges.write().unwrap().remove(id);
+
+        // Removing each edge also cleans the *other* endpoint's adjacency set.
+        for eid in &edge_ids {
+            self.remove_edge_direct(eid);
         }
+
+        Ok(true)
     }
 
     pub fn add_edge(&self, edge: GraphEdge) -> Result<()> {
@@ -196,27 +177,34 @@ impl GraphStore {
         let target = edge.target.clone();
         let id = edge.id.clone();
 
-        if !self.nodes.contains_key(&source) {
-            return Err(RagError::GraphError(format!(
-                "Source node not found: {}",
-                source
-            )));
-        }
-        if !self.nodes.contains_key(&target) {
-            return Err(RagError::GraphError(format!(
-                "Target node not found: {}",
-                target
-            )));
+        {
+            let nodes = self.nodes.read().unwrap();
+            if !nodes.contains_key(&source) {
+                return Err(RagError::GraphError(format!(
+                    "Source node not found: {}",
+                    source
+                )));
+            }
+            if !nodes.contains_key(&target) {
+                return Err(RagError::GraphError(format!(
+                    "Target node not found: {}",
+                    target
+                )));
+            }
         }
 
-        self.edges.insert(id.clone(), edge);
+        self.edges.write().unwrap().insert(id.clone(), edge);
 
         self.out_edges
+            .write()
+            .unwrap()
             .entry(source)
             .or_default()
             .insert(id.clone());
 
         self.in_edges
+            .write()
+            .unwrap()
             .entry(target)
             .or_default()
             .insert(id);
@@ -225,7 +213,7 @@ impl GraphStore {
     }
 
     pub fn get_edge(&self, id: &str) -> Option<GraphEdge> {
-        self.edges.get(id).map(|e| e.value().clone())
+        self.edges.read().unwrap().get(id).cloned()
     }
 
     pub fn remove_edge(&self, id: &str) -> bool {
@@ -233,17 +221,17 @@ impl GraphStore {
     }
 
     fn remove_edge_direct(&self, id: &str) -> bool {
-        if let Some((_, edge)) = self.edges.remove(id) {
-            if let Some(mut set) = self.out_edges.get_mut(&edge.source) {
-                set.remove(id);
-            }
-            if let Some(mut set) = self.in_edges.get_mut(&edge.target) {
-                set.remove(id);
-            }
-            true
-        } else {
-            false
+        let edge = self.edges.write().unwrap().remove(id);
+        let Some(edge) = edge else {
+            return false;
+        };
+        if let Some(set) = self.out_edges.write().unwrap().get_mut(&edge.source) {
+            set.remove(id);
         }
+        if let Some(set) = self.in_edges.write().unwrap().get_mut(&edge.target) {
+            set.remove(id);
+        }
+        true
     }
 
     pub fn upsert_edge(&self, edge: GraphEdge) -> Result<()> {
@@ -260,38 +248,46 @@ impl GraphStore {
     }
 
     pub fn find_edge(&self, source: &str, target: &str, relation: &str) -> Option<GraphEdge> {
-        self.edges
-            .iter()
-            .find(|e| {
-                e.value().source == source
-                    && e.value().target == target
-                    && e.value().relation == relation
-            })
-            .map(|e| e.value().clone())
+        let edges = self.edges.read().unwrap();
+        edges
+            .values()
+            .find(|e| e.source == source && e.target == target && e.relation == relation)
+            .cloned()
     }
 
     pub fn neighbors(&self, node_id: &str) -> Vec<GraphNode> {
         let mut result = Vec::new();
         let mut seen = HashSet::new();
 
-        if let Some(edge_ids) = self.out_edges.get(node_id) {
-            for eid in edge_ids.value().iter() {
-                if let Some(edge) = self.edges.get(eid)
-                    && seen.insert(edge.target.clone())
-                    && let Some(node) = self.nodes.get(&edge.target)
-                {
-                    result.push(node.value().clone());
+        // out-edge targets first, then in-edge sources (deduplicated together).
+        let candidate_ids: Vec<String> = {
+            let mut ids = Vec::new();
+            let out = self.out_edges.read().unwrap();
+            if let Some(edge_ids) = out.get(node_id) {
+                let edges = self.edges.read().unwrap();
+                for eid in edge_ids.iter() {
+                    if let Some(edge) = edges.get(eid) {
+                        ids.push(edge.target.clone());
+                    }
                 }
             }
-        }
+            drop(out);
+            let ine = self.in_edges.read().unwrap();
+            if let Some(edge_ids) = ine.get(node_id) {
+                let edges = self.edges.read().unwrap();
+                for eid in edge_ids.iter() {
+                    if let Some(edge) = edges.get(eid) {
+                        ids.push(edge.source.clone());
+                    }
+                }
+            }
+            ids
+        };
 
-        if let Some(edge_ids) = self.in_edges.get(node_id) {
-            for eid in edge_ids.value().iter() {
-                if let Some(edge) = self.edges.get(eid)
-                    && seen.insert(edge.source.clone())
-                    && let Some(node) = self.nodes.get(&edge.source)
-                {
-                    result.push(node.value().clone());
+        for nid in candidate_ids {
+            if seen.insert(nid.clone()) {
+                if let Some(node) = self.nodes.read().unwrap().get(&nid).cloned() {
+                    result.push(node);
                 }
             }
         }
@@ -303,13 +299,24 @@ impl GraphStore {
         let mut result = Vec::new();
         let mut seen = HashSet::new();
 
-        if let Some(edge_ids) = self.out_edges.get(node_id) {
-            for eid in edge_ids.value().iter() {
-                if let Some(edge) = self.edges.get(eid)
-                    && seen.insert(edge.target.clone())
-                    && let Some(node) = self.nodes.get(&edge.target)
-                {
-                    result.push(node.value().clone());
+        let targets: Vec<String> = {
+            let mut ids = Vec::new();
+            let out = self.out_edges.read().unwrap();
+            if let Some(edge_ids) = out.get(node_id) {
+                let edges = self.edges.read().unwrap();
+                for eid in edge_ids.iter() {
+                    if let Some(edge) = edges.get(eid) {
+                        ids.push(edge.target.clone());
+                    }
+                }
+            }
+            ids
+        };
+
+        for nid in targets {
+            if seen.insert(nid.clone()) {
+                if let Some(node) = self.nodes.read().unwrap().get(&nid).cloned() {
+                    result.push(node);
                 }
             }
         }
@@ -321,13 +328,24 @@ impl GraphStore {
         let mut result = Vec::new();
         let mut seen = HashSet::new();
 
-        if let Some(edge_ids) = self.in_edges.get(node_id) {
-            for eid in edge_ids.value().iter() {
-                if let Some(edge) = self.edges.get(eid)
-                    && seen.insert(edge.source.clone())
-                    && let Some(node) = self.nodes.get(&edge.source)
-                {
-                    result.push(node.value().clone());
+        let sources: Vec<String> = {
+            let mut ids = Vec::new();
+            let ine = self.in_edges.read().unwrap();
+            if let Some(edge_ids) = ine.get(node_id) {
+                let edges = self.edges.read().unwrap();
+                for eid in edge_ids.iter() {
+                    if let Some(edge) = edges.get(eid) {
+                        ids.push(edge.source.clone());
+                    }
+                }
+            }
+            ids
+        };
+
+        for nid in sources {
+            if seen.insert(nid.clone()) {
+                if let Some(node) = self.nodes.read().unwrap().get(&nid).cloned() {
+                    result.push(node);
                 }
             }
         }
@@ -338,13 +356,17 @@ impl GraphStore {
     pub fn degree(&self, node_id: &str) -> usize {
         let out = self
             .out_edges
+            .read()
+            .unwrap()
             .get(node_id)
-            .map(|s| s.value().len())
+            .map(|s| s.len())
             .unwrap_or(0);
         let in_deg = self
             .in_edges
+            .read()
+            .unwrap()
             .get(node_id)
-            .map(|s| s.value().len())
+            .map(|s| s.len())
             .unwrap_or(0);
         out + in_deg
     }
@@ -352,12 +374,14 @@ impl GraphStore {
     pub fn edges_between(&self, source: &str, target: &str) -> Vec<GraphEdge> {
         let mut result = Vec::new();
 
-        if let Some(edge_ids) = self.out_edges.get(source) {
-            for eid in edge_ids.value().iter() {
-                if let Some(edge) = self.edges.get(eid)
+        let out = self.out_edges.read().unwrap();
+        if let Some(edge_ids) = out.get(source) {
+            let edges = self.edges.read().unwrap();
+            for eid in edge_ids.iter() {
+                if let Some(edge) = edges.get(eid)
                     && edge.target == target
                 {
-                    result.push(edge.value().clone());
+                    result.push(edge.clone());
                 }
             }
         }
@@ -367,17 +391,21 @@ impl GraphStore {
 
     pub fn nodes_by_label(&self, label: &str) -> Vec<GraphNode> {
         self.nodes
-            .iter()
-            .filter(|n| n.value().label == label)
-            .map(|n| n.value().clone())
+            .read()
+            .unwrap()
+            .values()
+            .filter(|n| n.label == label)
+            .cloned()
             .collect()
     }
 
     pub fn edges_by_relation(&self, relation: &str) -> Vec<GraphEdge> {
         self.edges
-            .iter()
-            .filter(|e| e.value().relation == relation)
-            .map(|e| e.value().clone())
+            .read()
+            .unwrap()
+            .values()
+            .filter(|e| e.relation == relation)
+            .cloned()
             .collect()
     }
 
@@ -391,9 +419,9 @@ impl GraphStore {
 
         while let Some((node_id, depth)) = queue.pop_front() {
             if depth > 0
-                && let Some(node) = self.nodes.get(&node_id)
+                && let Some(node) = self.nodes.read().unwrap().get(&node_id).cloned()
             {
-                result.push(node.value().clone());
+                result.push(node);
             }
 
             if depth < max_depth {
@@ -450,10 +478,7 @@ impl GraphStore {
         let mut visited = HashMap::new();
         let mut queue = VecDeque::new();
         queue.push_back(source.to_string());
-        visited.insert(
-            source.to_string(),
-            (None::<String>, None::<String>, 0.0f32),
-        );
+        visited.insert(source.to_string(), (None::<String>, None::<String>, 0.0f32));
 
         while let Some(current) = queue.pop_front() {
             if current == target {
@@ -486,38 +511,38 @@ impl GraphStore {
                 });
             }
 
-            if let Some(edge_ids) = self.out_edges.get(&current) {
-                for eid in edge_ids.value().iter() {
-                    if let Some(edge) = self.edges.get(eid)
-                        && !visited.contains_key(&edge.target)
-                    {
-                        visited.insert(
-                            edge.target.clone(),
-                            (
-                                Some(current.clone()),
-                                Some(eid.clone()),
-                                edge.weight,
-                            ),
-                        );
-                        queue.push_back(edge.target.clone());
+            {
+                let out = self.out_edges.read().unwrap();
+                if let Some(edge_ids) = out.get(&current).cloned() {
+                    let edges = self.edges.read().unwrap();
+                    for eid in edge_ids.iter() {
+                        if let Some(edge) = edges.get(eid)
+                            && !visited.contains_key(&edge.target)
+                        {
+                            visited.insert(
+                                edge.target.clone(),
+                                (Some(current.clone()), Some(eid.clone()), edge.weight),
+                            );
+                            queue.push_back(edge.target.clone());
+                        }
                     }
                 }
             }
 
-            if let Some(edge_ids) = self.in_edges.get(&current) {
-                for eid in edge_ids.value().iter() {
-                    if let Some(edge) = self.edges.get(eid)
-                        && !visited.contains_key(&edge.source)
-                    {
-                        visited.insert(
-                            edge.source.clone(),
-                            (
-                                Some(current.clone()),
-                                Some(eid.clone()),
-                                edge.weight,
-                            ),
-                        );
-                        queue.push_back(edge.source.clone());
+            {
+                let ine = self.in_edges.read().unwrap();
+                if let Some(edge_ids) = ine.get(&current).cloned() {
+                    let edges = self.edges.read().unwrap();
+                    for eid in edge_ids.iter() {
+                        if let Some(edge) = edges.get(eid)
+                            && !visited.contains_key(&edge.source)
+                        {
+                            visited.insert(
+                                edge.source.clone(),
+                                (Some(current.clone()), Some(eid.clone()), edge.weight),
+                            );
+                            queue.push_back(edge.source.clone());
+                        }
                     }
                 }
             }
@@ -527,7 +552,7 @@ impl GraphStore {
     }
 
     pub fn detect_communities(&self) -> Vec<Community> {
-        let node_ids: Vec<String> = self.nodes.iter().map(|n| n.key().clone()).collect();
+        let node_ids: Vec<String> = self.nodes.read().unwrap().keys().cloned().collect();
 
         if node_ids.is_empty() {
             return Vec::new();
@@ -543,11 +568,8 @@ impl GraphStore {
             let mut changed = false;
 
             for node_id in &node_ids {
-                let neighbor_ids: Vec<String> = self
-                    .neighbors(node_id)
-                    .into_iter()
-                    .map(|n| n.id)
-                    .collect();
+                let neighbor_ids: Vec<String> =
+                    self.neighbors(node_id).into_iter().map(|n| n.id).collect();
 
                 if neighbor_ids.is_empty() {
                     continue;
@@ -595,36 +617,36 @@ impl GraphStore {
     }
 
     pub fn node_count(&self) -> usize {
-        self.nodes.len()
+        self.nodes.read().unwrap().len()
     }
 
     pub fn edge_count(&self) -> usize {
-        self.edges.len()
+        self.edges.read().unwrap().len()
     }
 
     pub fn density(&self) -> f64 {
-        let n = self.nodes.len() as f64;
+        let n = self.nodes.read().unwrap().len() as f64;
         if n <= 1.0 {
             return 0.0;
         }
         let max_edges = n * (n - 1.0);
-        self.edges.len() as f64 / max_edges
+        self.edges.read().unwrap().len() as f64 / max_edges
     }
 
     pub fn all_nodes(&self) -> Vec<GraphNode> {
-        self.nodes.iter().map(|n| n.value().clone()).collect()
+        self.nodes.read().unwrap().values().cloned().collect()
     }
 
     pub fn all_edges(&self) -> Vec<GraphEdge> {
-        self.edges.iter().map(|e| e.value().clone()).collect()
+        self.edges.read().unwrap().values().cloned().collect()
     }
 
     pub fn clear(&self) {
-        self.nodes.clear();
-        self.edges.clear();
-        self.out_edges.clear();
-        self.in_edges.clear();
-        self.name_index.clear();
+        self.nodes.write().unwrap().clear();
+        self.edges.write().unwrap().clear();
+        self.out_edges.write().unwrap().clear();
+        self.in_edges.write().unwrap().clear();
+        self.name_index.write().unwrap().clear();
     }
 
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<()> {
@@ -650,8 +672,8 @@ impl GraphStore {
         for node in data.nodes {
             let id = node.id.clone();
             let name = node.name.to_lowercase();
-            store.name_index.insert(name, id.clone());
-            store.nodes.insert(id, node);
+            store.name_index.write().unwrap().insert(name, id.clone());
+            store.nodes.write().unwrap().insert(id, node);
         }
 
         for edge in data.edges {
@@ -660,15 +682,19 @@ impl GraphStore {
             let target = edge.target.clone();
             store
                 .out_edges
+                .write()
+                .unwrap()
                 .entry(source)
                 .or_default()
                 .insert(id.clone());
             store
                 .in_edges
+                .write()
+                .unwrap()
                 .entry(target)
                 .or_default()
                 .insert(id.clone());
-            store.edges.insert(id, edge);
+            store.edges.write().unwrap().insert(id, edge);
         }
 
         Ok(store)
@@ -758,7 +784,11 @@ mod tests {
     #[test]
     fn test_add_edge_missing_node() {
         let store = GraphStore::new();
-        let edge = GraphEdge::new("nonexistent".to_string(), "also".to_string(), "x".to_string());
+        let edge = GraphEdge::new(
+            "nonexistent".to_string(),
+            "also".to_string(),
+            "x".to_string(),
+        );
         assert!(store.add_edge(edge).is_err());
     }
 
@@ -794,10 +824,18 @@ mod tests {
         store.add_node(c).unwrap();
 
         store
-            .add_edge(GraphEdge::new(a_id.clone(), b_id.clone(), "knows".to_string()))
+            .add_edge(GraphEdge::new(
+                a_id.clone(),
+                b_id.clone(),
+                "knows".to_string(),
+            ))
             .unwrap();
         store
-            .add_edge(GraphEdge::new(c_id.clone(), a_id.clone(), "knows".to_string()))
+            .add_edge(GraphEdge::new(
+                c_id.clone(),
+                a_id.clone(),
+                "knows".to_string(),
+            ))
             .unwrap();
 
         let neighbors = store.neighbors(&a_id);
@@ -818,7 +856,11 @@ mod tests {
         store.add_node(b).unwrap();
 
         store
-            .add_edge(GraphEdge::new(a_id.clone(), b_id.clone(), "follows".to_string()))
+            .add_edge(GraphEdge::new(
+                a_id.clone(),
+                b_id.clone(),
+                "follows".to_string(),
+            ))
             .unwrap();
 
         let out = store.out_neighbors(&a_id);
@@ -1034,7 +1076,11 @@ mod tests {
         store.add_node(b).unwrap();
 
         store
-            .add_edge(GraphEdge::new(a_id.clone(), b_id.clone(), "friend".to_string()))
+            .add_edge(GraphEdge::new(
+                a_id.clone(),
+                b_id.clone(),
+                "friend".to_string(),
+            ))
             .unwrap();
         store
             .add_edge(GraphEdge::new(b_id, a_id, "colleague".to_string()))
@@ -1159,7 +1205,8 @@ mod tests {
 
     #[test]
     fn test_edge_with_weight() {
-        let edge = GraphEdge::new("a".to_string(), "b".to_string(), "rel".to_string()).with_weight(3.5);
+        let edge =
+            GraphEdge::new("a".to_string(), "b".to_string(), "rel".to_string()).with_weight(3.5);
         assert!((edge.weight - 3.5).abs() < 0.01);
     }
 }

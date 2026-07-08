@@ -6,11 +6,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Ingest the current project as a codebase
     let src = CodebaseSource::new(".")
-        .with_extensions(vec![
-            "rs".to_string(),
-            "toml".to_string(),
-            "md".to_string(),
-        ])
+        .with_extensions(vec!["rs".to_string(), "toml".to_string(), "md".to_string()])
         .with_max_file_size(1024 * 1024); // 1 MB per file
 
     let docs = src.extract().await?;

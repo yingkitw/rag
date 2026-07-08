@@ -21,7 +21,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let src = CodebaseSource::new(&root).with_extensions(vec!["md".to_string()]);
 
     let extracted = src.extract().await?;
-    println!("Extracted {} file(s) from {}\n", extracted.len(), root.display());
+    println!(
+        "Extracted {} file(s) from {}\n",
+        extracted.len(),
+        root.display()
+    );
 
     for doc in &extracted {
         println!("- {} ({} bytes)", doc.source, doc.content.len());
@@ -45,7 +49,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for doc in &extracted {
         let meta = vec![
             ("source".to_string(), doc.source.clone()),
-            ("path".to_string(), doc.metadata.get("path").cloned().unwrap_or_default()),
+            (
+                "path".to_string(),
+                doc.metadata.get("path").cloned().unwrap_or_default(),
+            ),
         ];
         if retriever
             .add_document_with_metadata(doc.content.clone(), meta)

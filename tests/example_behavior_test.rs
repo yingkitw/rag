@@ -1,7 +1,7 @@
 use rag::{
+    DistanceMetric, FlatIndex, Index,
     graph::{GraphEdge, GraphNode, GraphStore},
     vector_store::{Document, InMemoryVectorStore, MetadataFilter, MinimalVectorDB, VectorStore},
-    DistanceMetric, Index, FlatIndex,
 };
 
 // ============================================================
@@ -92,7 +92,7 @@ async fn test_distance_metrics_produce_different_rankings() {
     assert_eq!(cosine_results[1].document.content, "D");
 
     // Dot product: A=[1,0,0] dot [1,0,0]=1, D=[0.9,0.1,0] dot [1,0,0]=0.9, C=1, B=0
-    // A=1, C=1 (tie -- depends on DashMap iteration order), D=0.9, B=0
+    // A=1, C=1 (tie -- depends on HashMap iteration order), D=0.9, B=0
     let dot_store = InMemoryVectorStore::with_metric(DistanceMetric::DotProduct);
     dot_store.add_batch(docs.clone()).await.unwrap();
     let dot_results = dot_store.search(&query, 4).await.unwrap();
@@ -211,9 +211,16 @@ async fn test_metadata_filter_with_embedding_search() {
 
     // Filtered search only returns rust docs
     let filter = MetadataFilter::new().add("lang".to_string(), "rust".to_string());
-    let filtered_results = store.search_with_filter(&[1.0, 0.0, 0.0], 3, &filter).await.unwrap();
+    let filtered_results = store
+        .search_with_filter(&[1.0, 0.0, 0.0], 3, &filter)
+        .await
+        .unwrap();
     assert_eq!(filtered_results.len(), 2);
-    assert!(filtered_results.iter().all(|r| r.document.metadata.get("lang") == Some(&"rust".to_string())));
+    assert!(
+        filtered_results
+            .iter()
+            .all(|r| r.document.metadata.get("lang") == Some(&"rust".to_string()))
+    );
 }
 
 // ============================================================
@@ -237,8 +244,14 @@ async fn test_minimal_db_equivalent_behavior() {
     let minimal_results = minimal.search(&[1.0, 0.0], 2).await.unwrap();
 
     assert_eq!(inmem_results.len(), minimal_results.len());
-    assert_eq!(inmem_results[0].document.content, minimal_results[0].document.content);
-    assert_eq!(inmem_results[1].document.content, minimal_results[1].document.content);
+    assert_eq!(
+        inmem_results[0].document.content,
+        minimal_results[0].document.content
+    );
+    assert_eq!(
+        inmem_results[1].document.content,
+        minimal_results[1].document.content
+    );
 
     assert_eq!(inmem.count().await.unwrap(), minimal.count().await.unwrap());
 
@@ -268,11 +281,7 @@ fn test_flat_index_batch_search_parallel() {
     index.add(Document::new("B".to_string()).with_embedding(vec![0.0, 1.0]));
     index.add(Document::new("C".to_string()).with_embedding(vec![0.5, 0.5]));
 
-    let queries = vec![
-        vec![1.0, 0.0],
-        vec![0.0, 1.0],
-        vec![0.5, 0.5],
-    ];
+    let queries = vec![vec![1.0, 0.0], vec![0.0, 1.0], vec![0.5, 0.5]];
 
     let results = index.search_batch(&queries, 2);
     assert_eq!(results.len(), 3);
@@ -311,7 +320,9 @@ fn test_graph_store_name_lookup_and_neighbors() {
     ))
     .unwrap();
 
-    let by_name = g.get_node_by_name("alice").expect("indexed by lowercase name");
+    let by_name = g
+        .get_node_by_name("alice")
+        .expect("indexed by lowercase name");
     assert_eq!(by_name.name, "Alice");
 
     let nbrs = g.neighbors(&alice_id);

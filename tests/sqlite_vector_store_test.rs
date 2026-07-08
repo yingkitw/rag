@@ -1,7 +1,7 @@
 #![cfg(feature = "sqlite")]
 
-use rag::vector_store::{Document, MetadataFilter, VectorStore};
 use rag::SqliteVectorStore;
+use rag::vector_store::{Document, MetadataFilter, VectorStore};
 
 #[tokio::test]
 async fn test_sqlite_vector_store_basic_operations() {

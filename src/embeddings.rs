@@ -22,9 +22,12 @@ pub trait EmbeddingModel: Send + Sync {
     fn embed_single(&self, text: &str) -> impl Future<Output = Result<Vec<f32>>> + Send {
         async move {
             let embeddings = self.embed(vec![text.to_string()]).await?;
-            Ok(embeddings.into_iter().next().ok_or(RagError::EmbeddingError(
-                "No embedding returned".to_string(),
-            ))?)
+            Ok(embeddings
+                .into_iter()
+                .next()
+                .ok_or(RagError::EmbeddingError(
+                    "No embedding returned".to_string(),
+                ))?)
         }
     }
 }
@@ -103,7 +106,11 @@ impl EmbeddingModel for OpenAIEmbeddingModel {
 
         let openai_response: OpenAIResponse = response.json().await?;
 
-        Ok(openai_response.data.into_iter().map(|d| d.embedding).collect())
+        Ok(openai_response
+            .data
+            .into_iter()
+            .map(|d| d.embedding)
+            .collect())
     }
 }
 
@@ -240,6 +247,10 @@ impl EmbeddingModel for HttpEmbeddingModel {
         }
 
         let openai_response: OpenAIResponse = response.json().await?;
-        Ok(openai_response.data.into_iter().map(|d| d.embedding).collect())
+        Ok(openai_response
+            .data
+            .into_iter()
+            .map(|d| d.embedding)
+            .collect())
     }
 }

@@ -46,7 +46,7 @@ rag = { git = "https://github.com/yingkitw/rag" }
 |---|---|---|
 | `http` | `reqwest`-based embedding models (OpenAI, Ollama, `HttpEmbeddingModel`), external rerankers, query rewriting, contextual retrieval, `WikiSource` | **yes** |
 | `hnsw` | `HnswIndex` approximate index via `hnsw_rs` | **yes** |
-| `ingest` | `CodebaseSource` directory-tree ingestion via `walkdir` | **yes** |
+| `ingest` | `CodebaseSource` directory-tree ingestion (hand-rolled `std::fs` walker) | **yes** |
 | `pdf` | `PdfSource` PDF ingestion via `lopdf` | **yes** |
 | `mcp` | `RagMcpServer`, `rag-mcp` binary, `schemars` schemas | **yes** |
 | `cli` | `rag` CLI binary, `clap`, `tracing-subscriber` | **yes** |

@@ -11,8 +11,7 @@ fn percent_encode(input: &str) -> String {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let mut out = String::with_capacity(input.len());
     for &byte in input.as_bytes() {
-        let keep =
-            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~');
+        let keep = byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~');
         if keep {
             out.push(byte as char);
         } else {
@@ -107,10 +106,7 @@ impl Source for PdfSource {
 
         let doc = ExtractedDocument::new(content, source_name)
             .with_metadata("format".to_string(), "pdf".to_string())
-            .with_metadata(
-                "path".to_string(),
-                self.path.to_string_lossy().to_string(),
-            );
+            .with_metadata("path".to_string(), self.path.to_string_lossy().to_string());
 
         Ok(vec![doc])
     }
@@ -124,7 +120,11 @@ fn extract_text_from_page(doc: &lopdf::Document, page: &lopdf::Dictionary) -> Re
     if let Ok(contents) = page.get(b"Contents") {
         let streams = match contents {
             lopdf::Object::Reference(ref_id) => {
-                vec![doc.get_object(*ref_id).cloned().unwrap_or(lopdf::Object::Null)]
+                vec![
+                    doc.get_object(*ref_id)
+                        .cloned()
+                        .unwrap_or(lopdf::Object::Null),
+                ]
             }
             lopdf::Object::Array(arr) => arr.clone(),
             other => vec![other.clone()],
@@ -346,9 +346,9 @@ impl CodebaseSource {
         Self {
             root: root.as_ref().to_path_buf(),
             extensions: vec![
-                "rs", "py", "js", "ts", "java", "go", "cpp", "c", "h", "hpp",
-                "rb", "php", "swift", "kt", "scala", "r", "md", "txt", "toml",
-                "yaml", "yml", "json", "xml", "html", "css", "sh", "bash",
+                "rs", "py", "js", "ts", "java", "go", "cpp", "c", "h", "hpp", "rb", "php", "swift",
+                "kt", "scala", "r", "md", "txt", "toml", "yaml", "yml", "json", "xml", "html",
+                "css", "sh", "bash",
             ]
             .into_iter()
             .map(|s| s.to_string())
@@ -377,9 +377,19 @@ impl Source for CodebaseSource {
         // Build/VCS directories are pruned during descent, which both avoids
         // descending into huge trees and mirrors the original skip rules.
         const SKIP_DIRS: &[&str] = &[
-            ".git", ".github", ".vscode", ".idea", ".cargo",
-            "target", "node_modules", "vendor", "dist", "build",
-            "__pycache__", ".mypy_cache", ".pytest_cache",
+            ".git",
+            ".github",
+            ".vscode",
+            ".idea",
+            ".cargo",
+            "target",
+            "node_modules",
+            "vendor",
+            "dist",
+            "build",
+            "__pycache__",
+            ".mypy_cache",
+            ".pytest_cache",
         ];
 
         let mut paths: Vec<PathBuf> = Vec::new();
@@ -411,7 +421,8 @@ impl Source for CodebaseSource {
 
         for path in paths {
             // Skip hidden files (names starting with dot)
-            if path.file_name()
+            if path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .is_some_and(|n| n.starts_with('.'))
             {
@@ -419,10 +430,7 @@ impl Source for CodebaseSource {
             }
 
             // Check extension
-            let ext = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
             if !self.extensions.iter().any(|e| e == ext) {
                 continue;
             }
@@ -446,10 +454,7 @@ impl Source for CodebaseSource {
             let doc = ExtractedDocument::new(content, relative.to_string_lossy().to_string())
                 .with_metadata("format".to_string(), "code".to_string())
                 .with_metadata("extension".to_string(), ext.to_string())
-                .with_metadata(
-                    "path".to_string(),
-                    path.to_string_lossy().to_string(),
-                );
+                .with_metadata("path".to_string(), path.to_string_lossy().to_string());
 
             docs.push(doc);
         }
@@ -493,9 +498,9 @@ impl Source for WikiSource {
             percent_encode(&self.title.replace(' ', "_"))
         );
 
-        let response = reqwest::get(&url).await.map_err(|e| {
-            crate::errors::RagError::HttpError(e)
-        })?;
+        let response = reqwest::get(&url)
+            .await
+            .map_err(|e| crate::errors::RagError::HttpError(e))?;
 
         if !response.status().is_success() {
             return Err(crate::errors::RagError::EmbeddingError(format!(
@@ -504,19 +509,14 @@ impl Source for WikiSource {
             )));
         }
 
-        let body: serde_json::Value = response.json().await.map_err(|e| {
-            crate::errors::RagError::HttpError(e)
-        })?;
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| crate::errors::RagError::HttpError(e))?;
 
-        let title = body["title"]
-            .as_str()
-            .unwrap_or(&self.title)
-            .to_string();
+        let title = body["title"].as_str().unwrap_or(&self.title).to_string();
 
-        let extract = body["extract"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let extract = body["extract"].as_str().unwrap_or("").to_string();
 
         if extract.is_empty() {
             return Err(crate::errors::RagError::EmbeddingError(
@@ -653,7 +653,11 @@ mod tests {
         let root = dir.path();
 
         std::fs::write(root.join("main.rs"), "fn main() {}").unwrap();
-        std::fs::write(root.join("lib.rs"), "pub fn add(a: i32, b: i32) -> i32 { a + b }").unwrap();
+        std::fs::write(
+            root.join("lib.rs"),
+            "pub fn add(a: i32, b: i32) -> i32 { a + b }",
+        )
+        .unwrap();
         std::fs::write(root.join("readme.md"), "# My Project\n\nHello world.").unwrap();
         std::fs::write(root.join("config.toml"), "[package]\nname = \"test\"").unwrap();
 

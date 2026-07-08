@@ -36,7 +36,7 @@ The vector-centric entry point is `Retriever`. The combined vector + graph path 
 
 **Implementations:**
 
-- `InMemoryVectorStore` — `DashMap` + pluggable `Index`; optional **JSON file** `save_to_file` / `load_from_file`.
+- `InMemoryVectorStore` — `RwLock<HashMap>` + pluggable `Index`; optional **JSON file** `save_to_file` / `load_from_file`.
 - `MinimalVectorDB` — `RwLock` map + `FlatIndex`.
 - **`JsonPersistentVectorStore`** — wraps `InMemoryVectorStore`, flushes to a path on each mutation.
 - `PostgresVectorStore` — PostgreSQL-backed `VectorStore` via the `pgvector` extension (requires `postgres` feature).
@@ -210,13 +210,13 @@ The vector-centric entry point is `Retriever`. The combined vector + graph path 
 ### Snapshot (`GraphRagEngine::save_snapshot`)
 
 1. Serialize all documents (including embeddings), `GraphPersisted`, and entity/chunk maps.
-2. `load_from_snapshot_file` rebuilds `InMemoryVectorStore` and in-memory `DashMap` side tables.
+2. `load_from_snapshot_file` rebuilds `InMemoryVectorStore` and in-memory `RwLock<HashMap>` side tables.
 
 ## Extensibility
 
 ### New embedding models
 
-Implement `EmbeddingModel` with `async_trait` and delegate to your provider.
+Implement `EmbeddingModel` (native `async fn` in trait) and delegate to your provider.
 
 ### New indexes
 
@@ -245,7 +245,7 @@ Implement `EntityExtractor` to feed `GraphRagEngine` with NER or model-based ent
 ## Concurrency
 
 - Public APIs are async (`tokio`).
-- `InMemoryVectorStore` and `GraphStore` use `DashMap` for concurrent access.
+- `InMemoryVectorStore` and `GraphStore` use `std::sync::RwLock<HashMap>` for concurrent access.
 - Batch index search can run work in parallel depending on `FlatIndex` usage.
 
 ## Performance

@@ -18,7 +18,10 @@ async fn filter_first_search_exact_match() {
     store.add(d3).await.unwrap();
 
     let filter = MetadataFilter::new().add("lang".to_string(), "rust".to_string());
-    let results = store.search_with_filter(&[1.0, 0.0, 0.0], 5, &filter).await.unwrap();
+    let results = store
+        .search_with_filter(&[1.0, 0.0, 0.0], 5, &filter)
+        .await
+        .unwrap();
 
     assert_eq!(results.len(), 2);
     for r in &results {
@@ -36,7 +39,10 @@ async fn filter_first_no_match() {
     store.add(d).await.unwrap();
 
     let filter = MetadataFilter::new().add("tag".to_string(), "B".to_string());
-    let results = store.search_with_filter(&[1.0, 0.0], 5, &filter).await.unwrap();
+    let results = store
+        .search_with_filter(&[1.0, 0.0], 5, &filter)
+        .await
+        .unwrap();
     assert!(results.is_empty());
 }
 
@@ -47,6 +53,9 @@ async fn filter_first_empty_filter_returns_all() {
     store.add(d).await.unwrap();
 
     let filter = MetadataFilter::new();
-    let results = store.search_with_filter(&[1.0, 0.0], 5, &filter).await.unwrap();
+    let results = store
+        .search_with_filter(&[1.0, 0.0], 5, &filter)
+        .await
+        .unwrap();
     assert_eq!(results.len(), 1);
 }

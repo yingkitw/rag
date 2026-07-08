@@ -18,17 +18,32 @@ fn main() {
         This wraps things up.";
 
     println!("=== Recursive chunker (target 120 chars) ===");
-    for (i, chunk) in RecursiveChunker::new(120, 0).chunk(markdown).unwrap().iter().enumerate() {
+    for (i, chunk) in RecursiveChunker::new(120, 0)
+        .chunk(markdown)
+        .unwrap()
+        .iter()
+        .enumerate()
+    {
         println!("[{i}] ({}) {chunk:?}\n", chunk.len());
     }
 
     println!("=== Semantic chunker (token-overlap grouping) ===");
-    for (i, chunk) in SemanticChunker::default().chunk(markdown).unwrap().iter().enumerate() {
+    for (i, chunk) in SemanticChunker::default()
+        .chunk(markdown)
+        .unwrap()
+        .iter()
+        .enumerate()
+    {
         println!("[{i}] {chunk}\n");
     }
 
     println!("=== Structural chunker (markdown + code aware) ===");
-    for (i, chunk) in StructuralChunker::default().chunk(markdown).unwrap().iter().enumerate() {
+    for (i, chunk) in StructuralChunker::default()
+        .chunk(markdown)
+        .unwrap()
+        .iter()
+        .enumerate()
+    {
         println!("[{i}] {chunk}\n");
     }
 }

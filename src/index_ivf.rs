@@ -2,12 +2,11 @@
 //!
 //! Exact within probed clusters; suitable as a stepping stone before full HNSW.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 
-use dashmap::DashMap;
-
-use crate::index::{flat_search_top_k, flat_search_top_k_slice, DistanceMetric, Index};
+use crate::index::{DistanceMetric, Index, flat_search_top_k, flat_search_top_k_slice};
 use crate::vector_store::{Document, Similarity};
 
 /// IVF index with brute-force scoring inside selected clusters.
@@ -18,8 +17,8 @@ pub struct IvfflatIndex {
     nprobe: usize,
     centroids: RwLock<Vec<Vec<f32>>>,
     buckets: RwLock<Vec<Vec<String>>>,
-    doc_cluster: DashMap<String, usize>,
-    documents: DashMap<String, Arc<Document>>,
+    doc_cluster: RwLock<HashMap<String, usize>>,
+    documents: RwLock<HashMap<String, Arc<Document>>>,
     centroid_count: AtomicUsize,
     ready: AtomicBool,
 }
@@ -35,8 +34,8 @@ impl IvfflatIndex {
             nprobe,
             centroids: RwLock::new(Vec::new()),
             buckets: RwLock::new(Vec::new()),
-            doc_cluster: DashMap::new(),
-            documents: DashMap::new(),
+            doc_cluster: RwLock::new(HashMap::new()),
+            documents: RwLock::new(HashMap::new()),
             centroid_count: AtomicUsize::new(0),
             ready: AtomicBool::new(false),
         }
@@ -66,7 +65,10 @@ impl Index for IvfflatIndex {
     fn add(&self, document: Document) {
         let id = document.id.clone();
         let arc = Arc::new(document);
-        self.documents.insert(id.clone(), arc.clone());
+        self.documents
+            .write()
+            .unwrap()
+            .insert(id.clone(), arc.clone());
 
         let Some(emb) = arc.embedding.as_ref() else {
             return;
@@ -86,7 +88,7 @@ impl Index for IvfflatIndex {
             let idx = c;
             self.centroids.write().unwrap().push(emb.clone());
             self.buckets.write().unwrap().push(vec![id.clone()]);
-            self.doc_cluster.insert(id, idx);
+            self.doc_cluster.write().unwrap().insert(id, idx);
             let new_c = self.centroid_count.fetch_add(1, Ordering::AcqRel) + 1;
             if new_c >= self.nlist {
                 self.ready.store(true, Ordering::Release);
@@ -98,12 +100,12 @@ impl Index for IvfflatIndex {
         let j = self.nearest_centroid(&centroids, emb);
         drop(centroids);
         self.buckets.write().unwrap()[j].push(id.clone());
-        self.doc_cluster.insert(id, j);
+        self.doc_cluster.write().unwrap().insert(id, j);
     }
 
     fn remove(&self, id: &str) -> bool {
-        if let Some((_, _)) = self.documents.remove(id) {
-            if let Some((_, cluster)) = self.doc_cluster.remove(id) {
+        if self.documents.write().unwrap().remove(id).is_some() {
+            if let Some(cluster) = self.doc_cluster.write().unwrap().remove(id) {
                 let mut buckets = self.buckets.write().unwrap();
                 if let Some(bucket) = buckets.get_mut(cluster) {
                     bucket.retain(|x| x != id);
@@ -115,7 +117,7 @@ impl Index for IvfflatIndex {
     }
 
     fn search(&self, query: &[f32], top_k: usize) -> Vec<Similarity> {
-        if top_k == 0 || self.documents.is_empty() {
+        if top_k == 0 || self.documents.read().unwrap().is_empty() {
             return Vec::new();
         }
         if !self.ready.load(Ordering::Acquire) {
@@ -141,20 +143,25 @@ impl Index for IvfflatIndex {
         drop(centroids);
 
         let buckets = self.buckets.read().unwrap();
+        let docs = self.documents.read().unwrap();
         let mut seen = std::collections::HashSet::new();
         let mut candidates: Vec<Arc<Document>> = Vec::new();
         for &pi in &probe {
             if let Some(bucket) = buckets.get(pi) {
                 for id in bucket {
-                    if seen.insert(id.clone()) && let Some(doc) = self.documents.get(id) {
-                        candidates.push(Arc::clone(doc.value()));
+                    if seen.insert(id.clone())
+                        && let Some(doc) = docs.get(id)
+                    {
+                        candidates.push(Arc::clone(doc));
                     }
                 }
             }
         }
         drop(buckets);
+        drop(docs);
 
-        let mut similarities = flat_search_top_k_slice(&candidates, query, self.metric, top_k, &|_| true);
+        let mut similarities =
+            flat_search_top_k_slice(&candidates, query, self.metric, top_k, &|_| true);
 
         if similarities.len() < top_k {
             let extra = flat_search_top_k(&self.documents, query, self.metric, top_k, &|doc| {
@@ -167,8 +174,8 @@ impl Index for IvfflatIndex {
     }
 
     fn clear(&self) {
-        self.documents.clear();
-        self.doc_cluster.clear();
+        self.documents.write().unwrap().clear();
+        self.doc_cluster.write().unwrap().clear();
         self.centroids.write().unwrap().clear();
         self.buckets.write().unwrap().clear();
         self.centroid_count.store(0, Ordering::Release);
@@ -177,7 +184,7 @@ impl Index for IvfflatIndex {
     }
 
     fn len(&self) -> usize {
-        self.documents.len()
+        self.documents.read().unwrap().len()
     }
 
     fn dimension(&self) -> Option<usize> {

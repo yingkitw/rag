@@ -5,13 +5,13 @@
 use rag::{
     chunker::{RecursiveChunker, SemanticChunker, StructuralChunker, TextChunker},
     eval::{
-        average_precision, ndcg_at_k, precision_at_k, recall_at_k, reciprocal_rank, relevance_set,
-        EvalReport,
+        EvalReport, average_precision, ndcg_at_k, precision_at_k, recall_at_k, reciprocal_rank,
+        relevance_set,
     },
     quantize::{QuantizationParams, QuantizedIndex},
     simd,
     vector_store::Document,
-    wal::{apply_ops, WalOp, WriteAheadLog},
+    wal::{WalOp, WriteAheadLog, apply_ops},
 };
 use std::collections::HashSet;
 use tempfile::TempDir;
@@ -20,7 +20,8 @@ use tempfile::TempDir;
 
 #[test]
 fn eval_metrics_end_to_end() {
-    let relevant: HashSet<String> = relevance_set(["d1".to_string(), "d3".to_string(), "d7".to_string()]);
+    let relevant: HashSet<String> =
+        relevance_set(["d1".to_string(), "d3".to_string(), "d7".to_string()]);
     let retrieved = vec![
         "d1".to_string(),
         "d2".to_string(),
@@ -42,7 +43,10 @@ fn eval_metrics_end_to_end() {
 #[tokio::test]
 async fn eval_evaluate_aggregates_multiple_queries() {
     let queries = vec![
-        ("rust memory".to_string(), vec!["a".to_string(), "b".to_string()]),
+        (
+            "rust memory".to_string(),
+            vec!["a".to_string(), "b".to_string()],
+        ),
         ("paris tower".to_string(), vec!["c".to_string()]),
     ];
     let report = rag::eval::evaluate(queries, 2, |q| async move {
@@ -92,7 +96,11 @@ fn structural_chunker_keeps_markdown_sections() {
     let chunker = StructuralChunker::new(1000, 0);
     let text = "# Title\nintro.\n## A\ncontent a.\n## B\ncontent b.";
     let chunks = chunker.chunk(text).unwrap();
-    assert!(chunks.iter().any(|c| c.contains("Section A") || c.contains("content a")));
+    assert!(
+        chunks
+            .iter()
+            .any(|c| c.contains("Section A") || c.contains("content a"))
+    );
     assert!(chunks.iter().any(|c| c.contains("content b")));
 }
 
@@ -144,7 +152,12 @@ fn simd_matches_scalar_results() {
     let scalar_dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
     assert!((simd::dot_product(&a, &b) - scalar_dot).abs() < 1e-2);
 
-    let scalar_euc: f32 = a.iter().zip(b.iter()).map(|(x, y)| (x - y) * (x - y)).sum::<f32>().sqrt();
+    let scalar_euc: f32 = a
+        .iter()
+        .zip(b.iter())
+        .map(|(x, y)| (x - y) * (x - y))
+        .sum::<f32>()
+        .sqrt();
     assert!((simd::euclidean_distance(&a, &b) - scalar_euc).abs() < 1e-2);
 
     assert!(simd::cosine_similarity(&[1.0, 0.0], &[0.0, 1.0]).abs() < 1e-6);
@@ -156,8 +169,11 @@ fn simd_matches_scalar_results() {
 fn wal_append_replay_reconstructs_state() {
     let dir = TempDir::new().unwrap();
     let wal = WriteAheadLog::new(dir.path().join("wal.jsonl"));
-    wal.append(&WalOp::Put(Document::with_id("a".to_string(), "one".to_string())))
-        .unwrap();
+    wal.append(&WalOp::Put(Document::with_id(
+        "a".to_string(),
+        "one".to_string(),
+    )))
+    .unwrap();
     wal.append_batch(&[
         WalOp::Put(Document::with_id("b".to_string(), "two".to_string())),
         WalOp::Delete("a".to_string()),
@@ -174,8 +190,11 @@ fn wal_append_replay_reconstructs_state() {
 fn wal_truncate_after_checkpoint() {
     let dir = TempDir::new().unwrap();
     let wal = WriteAheadLog::new(dir.path().join("wal.jsonl"));
-    wal.append(&WalOp::Put(Document::with_id("a".to_string(), "one".to_string())))
-        .unwrap();
+    wal.append(&WalOp::Put(Document::with_id(
+        "a".to_string(),
+        "one".to_string(),
+    )))
+    .unwrap();
     assert!(wal.size() > 0);
     wal.truncate().unwrap();
     assert_eq!(wal.size(), 0);
